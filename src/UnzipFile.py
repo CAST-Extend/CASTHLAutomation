@@ -52,8 +52,11 @@ def unzip_code(root_folder, extract_path, execution_log_path, time_to_unzip_log_
                             # Create a directory with the name of the zip file
                             repo_extract_path = os.path.join(extract_path, repo_name)
                             if os.path.exists(repo_extract_path) and os.listdir(repo_extract_path):
-                                print(f"Warning: {repo_extract_path} already exists with contents. Skipping extraction for {repo_path}")
-                                continue  # Skip extraction if directory exists with contents
+                                dir_to_delete = repo_extract_path
+                                command = f'rmdir /s /q "{dir_to_delete}"'
+                                os.system(command)
+                                # print(f"Warning: {repo_extract_path} already exists with contents. Skipping extraction for {repo_path}")
+                                # continue  # Skip extraction if directory exists with contents
                             os.makedirs(repo_extract_path, exist_ok=True)
 
                             start_time = datetime.datetime.now()
@@ -64,14 +67,14 @@ def unzip_code(root_folder, extract_path, execution_log_path, time_to_unzip_log_
 
                             except Exception as e:
                                 failure_count += 1
-                                raise ValueError(f"Extraction failed for {repo_path}: {e}")
+                                raise ValueError(f"Extraction failed for {repo_path}: {e}\n")
 
                             end_time = datetime.datetime.now()
                             total_time = end_time - start_time
 
                             execution_log.write(f"{execution_message}Successful\n")
                             time_to_unzip_log.write(f"{repo_name} | {start_time} | {end_time} | {total_time}\n")
-                            print(f"Extraction completed for {repo_path}")
+                            print(f"Extraction completed for {repo_path}\n")
                             success_count += 1
 
     except Exception as e:

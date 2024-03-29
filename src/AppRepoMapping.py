@@ -113,8 +113,11 @@ def create_application_folders(mapping_sheet, repo_folder, output_folder, logger
         if not os.path.exists(app_folder_path):
             os.makedirs(app_folder_path)
             logger.info(f"Application folder '{app_name}' created.")
-        else:
-            pass
+            
+        if os.path.exists(app_folder_path+'\\'+repo_name): 
+            dir_to_delete = app_folder_path+'\\'+repo_name
+            command = f'rmdir /s /q "{dir_to_delete}"'
+            os.system(command)
         
         # Move entire directory from repo to application folder
         repo_folder_path = os.path.join(repo_folder, repo_name)

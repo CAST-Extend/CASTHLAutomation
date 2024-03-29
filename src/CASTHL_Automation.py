@@ -33,7 +33,7 @@ def get_all_repo_metadata(org_name, access_token, output_file_path, log_file_pat
             repo_url = f"https://api.github.com/orgs/{org_name}/repos?per_page=200&page={page_number}"
             response = requests.get(repo_url, headers=headers)
             response.raise_for_status()  # Raise an exception for 4xx or 5xx status codes
-            print (response.raise_for_status)
+            # print (response.raise_for_status)
             repos = response.json()
             if not repos:  # No more repositories on this page
                 break
@@ -48,6 +48,13 @@ def get_all_repo_metadata(org_name, access_token, output_file_path, log_file_pat
         print(f"Metadata for all repositories in organization {org_name} downloaded successfully.")
     except requests.exceptions.RequestException as e:
         log_messages.append(f"Error: {str(e)}")
+        if e.response.status_code==401:
+            print('Bad credentials! Please check your "github_token" in config.properties file.')
+        elif e.response.status_code==404:
+            print('Bad Organization Name! Please check your "github_org_name" in config.properties file.')
+        else:
+            print(e)
+        exit(0)
 
     end_time = datetime.datetime.now()
     total_time = end_time - start_time
@@ -211,12 +218,18 @@ def download_and_save_code(application_name, repository_url, server_location, to
         # Check if the 'Output' folder exists, if not, create it
     if not os.path.exists(application_name_directory):
         os.makedirs(application_name_directory)
+    else:
+        dir_to_delete = application_name_directory
+        command = f'rmdir /s /q "{dir_to_delete}"'
+        os.system(command)
+        os.makedirs(application_name_directory)
     
     repository_zip_path = os.path.join(application_name_directory, application_name + '.zip')
     #print(f"repository_zip_path '{repository_zip_path}'.")
     if os.path.exists(repository_zip_path):
         log_processing(application_name, "Skipped: ZIP file already exists", processing_log_file)
         print(f"Skipping repository '{application_name}'. ZIP file already exists.\n")
+        
     else:
         start_time = datetime.datetime.now()
         try:
@@ -233,7 +246,11 @@ def download_and_save_code(application_name, repository_url, server_location, to
                         log_processing(application_name, "Successful", processing_log_file)
                         print(f"Repository '{application_name}' downloaded successfully as ZIP file to '{repository_zip_path}'.\n")
             else:
-                print(f"Failed to download repository '{application_name}'.")
+                end_time = datetime.datetime.now()
+                total_time = end_time - start_time
+                log_start_end_time(application_name, start_time, end_time, total_time, start_end_log_file)
+                log_processing(application_name, "Failed", processing_log_file)
+                print(f"Failed to download repository '{application_name}'.\n")
         except Exception as e:
             end_time = datetime.datetime.now()
             total_time = end_time - start_time
@@ -259,22 +276,26 @@ def main():
     output_dir = config.get('Directories', 'output_dir')
     App_Repo_Mapping = config.get('Input-File', 'App_Repo_Mapping')
     src_dir_analyze = config.get('Directories', 'src_dir_analyze')
+    
+    # Check if the 'Source Dir' folder exists, if not, create it
+    if not os.path.exists(src_dir):
+        os.makedirs(src_dir)
 
-    # Check if the 'Output' folder exists, if not, create it
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    # Check if the 'unzip_dir' folder exists, if not, create it
+    if not os.path.exists(unzip_dir):
+        os.makedirs(unzip_dir)
     
     # Check if the 'Log Dir' folder exists, if not, create it
     if not os.path.exists(logs_dir):
         os.makedirs(logs_dir)
     
-        # Check if the 'Source Dir' folder exists, if not, create it
-    if not os.path.exists(src_dir):
-        os.makedirs(src_dir)
-    
     # Check if the 'Output' folder exists, if not, create it
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+
+    # Check if the 'Output' folder exists, if not, create it
+    if not os.path.exists(src_dir_analyze):
+        os.makedirs(src_dir_analyze)
 
     while True:
         print("Select options:")
@@ -298,7 +319,7 @@ def main():
         output_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Metadata.json")
 
         # Save repository metadata to JSON file
-        log_file_path = os.path.join(logs_dir, f"{org_name}_Metadatadownload.log")
+        log_file_path = os.path.join(logs_dir, f"{org_name}_Metadatadownload_{current_datetime}.log")
         
         # Save repository metadata to CSV file
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
@@ -327,8 +348,8 @@ def main():
         batch = input("Enter batch number to download the source code: ")
        
         #log_folder = os.path.join(os.path.dirname(__file__), '..', 'Logs')
-        start_end_log_file = os.path.join(logs_dir, f"Timetodownload_{batch}.txt")
-        processing_log_file = os.path.join(logs_dir, f"StatusLog_{batch}.txt")
+        start_end_log_file = os.path.join(logs_dir, f"Timetodownload_{batch}_{current_datetime}.txt")
+        processing_log_file = os.path.join(logs_dir, f"StatusLog_{batch}_{current_datetime}.txt")
 
         # Check if the start_end_log_file exists, if not, create it
         if not os.path.exists(start_end_log_file):
@@ -356,7 +377,7 @@ def main():
 
         #Unzip_File.unzip_code(src_dir, unzip_dir, os.path.join(logs_dir, f"Unzip_Execution{current_datetime}.log"), os.path.join(logs_dir, f"Unzip_Time{current_datetime}.log"))
         try:
-            UnzipFile.unzip_code(src_dir, unzip_dir, os.path.join(logs_dir, f"Unzip_Execution{current_datetime}.log"), os.path.join(logs_dir, f"Unzip_Time{current_datetime}.log"))
+            UnzipFile.unzip_code(src_dir, unzip_dir, os.path.join(logs_dir, f"Unzip_Execution_{current_datetime}.log"), os.path.join(logs_dir, f"Unzip_Time_{current_datetime}.log"))
         except Exception as e:
             print(f"Error occurred during extraction: {e}")
 

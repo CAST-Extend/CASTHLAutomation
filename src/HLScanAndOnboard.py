@@ -213,7 +213,7 @@ def main():
 
     try:
         # Read properties from the config file
-        properties = read_properties_file(r'Config/config.properties')
+        properties = read_properties_file(r'../Config/config.properties')
 
         # Extract properties
         PERL = properties.get('highlight_perl_dir')
