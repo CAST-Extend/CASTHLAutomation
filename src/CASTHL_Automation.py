@@ -257,77 +257,76 @@ def download_and_save_code(application_name, repository_url, server_location, to
             log_start_end_time(application_name, start_time, end_time, total_time, start_end_log_file)
             log_processing(application_name, f"Failed: {e}", processing_log_file)
             print(f"Error downloading repository: {e}")
-
 def main():
-    
-    current_datetime = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-
-    # Read configuration from config.properties file
-    config = configparser.ConfigParser()
-    config_file_path = os.path.join(os.path.dirname(__file__), '..', 'Config', 'config.properties')
-    config.read(config_file_path)
-
-    # Get values from the config file
-    org_name = config.get('GitHub', 'github_org_name')
-    token = config.get('GitHub', 'github_token')
-    src_dir = config.get('Directories', 'src_dir')
-    unzip_dir = config.get('Directories', 'unzip_dir')
-    logs_dir = config.get('Directories', 'logs_dir')
-    output_dir = config.get('Directories', 'output_dir')
-    App_Repo_Mapping = config.get('Input-File', 'App_Repo_Mapping')
-    src_dir_analyze = config.get('Directories', 'src_dir_analyze')
-    
-    # Check if the 'Source Dir' folder exists, if not, create it
-    if not os.path.exists(src_dir):
-        os.makedirs(src_dir)
-
-    # Check if the 'unzip_dir' folder exists, if not, create it
-    if not os.path.exists(unzip_dir):
-        os.makedirs(unzip_dir)
-    
-    # Check if the 'Log Dir' folder exists, if not, create it
-    if not os.path.exists(logs_dir):
-        os.makedirs(logs_dir)
-    
-    # Check if the 'Output' folder exists, if not, create it
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    # Check if the 'Output' folder exists, if not, create it
-    if not os.path.exists(src_dir_analyze):
-        os.makedirs(src_dir_analyze)
-
     while True:
-        print("Select options:")
-        print("0. Create Highlight Domain and Application")
-        print("1. Download Metadata for GitHub organization")
-        print("2. Download source code for all repositories in the organization in batches")
-        print("3. Unzip the downloaded source code")
-        print("4. Create application folders and move repositories")
-        print("5. Trigger CAST Highlight onboarding for the source code")
-        choice = input("Enter your choice (0/1/2/3/4/5): ")
-        if choice not in ['0', '1', '2', '3', '4', '5']:
-            print("Invalid choice. Please enter 0, 1, 2, 3, 4 or 5.")
-            continue
-        else:
-            break
+        current_datetime = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
-    output_type = int(choice)
+        # Read configuration from config.properties file
+        config = configparser.ConfigParser()
+        config_file_path = os.path.join(os.path.dirname(__file__), '..', 'Config', 'config.properties')
+        config.read(config_file_path)
+
+        # Get values from the config file
+        org_name = config.get('GitHub', 'github_org_name')
+        token = config.get('GitHub', 'github_token')
+        src_dir = config.get('Directories', 'src_dir')
+        unzip_dir = config.get('Directories', 'unzip_dir')
+        logs_dir = config.get('Directories', 'logs_dir')
+        output_dir = config.get('Directories', 'output_dir')
+        App_Repo_Mapping = config.get('Input-File', 'App_Repo_Mapping')
+        src_dir_analyze = config.get('Directories', 'src_dir_analyze')
+
+        # Check if the 'Source Dir' folder exists, if not, create it
+        if not os.path.exists(src_dir):
+            os.makedirs(src_dir)
+
+        # Check if the 'unzip_dir' folder exists, if not, create it
+        if not os.path.exists(unzip_dir):
+            os.makedirs(unzip_dir)
+        
+        # Check if the 'Log Dir' folder exists, if not, create it
+        if not os.path.exists(logs_dir):
+            os.makedirs(logs_dir)
+        
+        # Check if the 'Output' folder exists, if not, create it
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        # Check if the 'Output' folder exists, if not, create it
+        if not os.path.exists(src_dir_analyze):
+            os.makedirs(src_dir_analyze)
+
+        while True:
+            print("Select options:")
+            #print("0. Create Highlight Domain and Application")
+            print("1. Download Metadata for GitHub organization")
+            print("2. Download source code for all repositories in the organization in batches")
+            print("3. Unzip the downloaded source code")
+            print("4. Create application folders and move repositories")
+            print("5. Trigger CAST Highlight onboarding for the source code")
+            choice = input("Enter your choice (0/1/2/3/4/5): ")
+            
+            if choice not in ['1', '2', '3', '4', '5']:
+                print("Invalid choice. Please enter 1, 2, 3, 4 or 5.")
+                continue
+
+            output_type = int(choice)
+            main_operations(output_type, current_datetime, org_name, token, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, src_dir_analyze)
+
+            # Ask user if they want to continue
+            continue_option = input("Do you want to run another query? (yes/no): ")
+            if continue_option.lower() != 'yes':
+                break
+
+def main_operations(output_type, current_datetime, org_name, token, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, src_dir_analyze):
     if output_type == 1:
-          
-        # Save repository metadata to JSON file
         output_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Metadata.json")
-
-        # Save repository metadata to JSON file
         log_file_path = os.path.join(logs_dir, f"{org_name}_Metadatadownload_{current_datetime}.log")
-        
-        # Save repository metadata to CSV file
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
-        
         get_all_repo_metadata(org_name, token, output_file_path, log_file_path)
         json_to_csv(output_file_path, output_csv_file_path)
         modify_archive_urls(output_csv_file_path)
-        print(f"Refer Log file {log_file_path} for downloag log and time to downloaded Metadata.")
+        print(f"Refer Log file {log_file_path} for download log and time to download Metadata.")
         print(f"CSV file generated {output_csv_file_path} with summary of repositories which can be used for downloading source code(Task-2).")
     elif output_type == 2:
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
@@ -335,73 +334,57 @@ def main():
             print("Please run option 1 to download metadata first.")
             return
         if not check_column_exists(output_csv_file_path, 'batch_number'):
-            print(f"Column 'batch_number' does not exist in file {output_csv_file_path}. Create new column with name 'batch_number' and enter number of batch you want to run for download.")
+            print(f"Column 'batch_number' does not exist in file {output_csv_file_path}. Create a new column with the name 'batch_number' and enter the number of the batch you want to run for download.")
             return
         if not check_column_exists(output_csv_file_path, 'repo_archive_download_api'):
-            print(f"Column 'repo_archive_download_api' does not exist in file {output_csv_file_path}. Review CSV file and rerun option 1.")
+            print(f"Column 'repo_archive_download_api' does not exist in file {output_csv_file_path}. Review the CSV file and rerun option 1.")
             return
         if not check_column_exists(output_csv_file_path, 'name'):
-            print(f"Column 'name' does not exist in file {output_csv_file_path}. Review CSV file and rerun option 1.")
+            print(f"Column 'name' does not exist in file {output_csv_file_path}. Review the CSV file and rerun option 1.")
             return
         
-        #src_dir = input("Directory location to download the source code: ")
         batch = input("Enter batch number to download the source code: ")
-       
-        #log_folder = os.path.join(os.path.dirname(__file__), '..', 'Logs')
-        start_end_log_file = os.path.join(logs_dir, f"Timetodownload_{batch}_{current_datetime}.txt")
-        processing_log_file = os.path.join(logs_dir, f"StatusLog_{batch}_{current_datetime}.txt")
-
-        # Check if the start_end_log_file exists, if not, create it
+        start_end_log_file = os.path.join(logs_dir, f"RepoDownloadTime_{batch}_{current_datetime}.txt")
+        processing_log_file = os.path.join(logs_dir, f"RepoDownloadStatusLog_{batch}_{current_datetime}.txt")
         if not os.path.exists(start_end_log_file):
             with open(start_end_log_file, "w") as start_end_log:
                 start_end_log.write("Start Time\tEnd Time\tTotal Time Taken\n")
         
-        # Check if the processing_log_file exists, if not, create it
         if not os.path.exists(processing_log_file):
             with open(processing_log_file, "w") as processing_log:
                 processing_log.write("Timestamp\tMessage\n")
 
-        # Clear log files if they already exist
         open(start_end_log_file, 'w').close()
         open(processing_log_file, 'w').close()
-        # Save repository metadata to CSV file
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
         data = read_csv_data(output_csv_file_path)  
         for repository in data:
-            
-            # Check for equality
             if repository[8] == str(batch):
                 download_and_save_code(repository[1], repository[7], src_dir, token, start_end_log_file, processing_log_file)
 
     elif output_type == 3:
-
-        #Unzip_File.unzip_code(src_dir, unzip_dir, os.path.join(logs_dir, f"Unzip_Execution{current_datetime}.log"), os.path.join(logs_dir, f"Unzip_Time{current_datetime}.log"))
         try:
             UnzipFile.unzip_code(src_dir, unzip_dir, os.path.join(logs_dir, f"Unzip_Execution_{current_datetime}.log"), os.path.join(logs_dir, f"Unzip_Time_{current_datetime}.log"))
         except Exception as e:
             print(f"Error occurred during extraction: {e}")
 
     elif output_type == 4:
-        log_file=os.path.join(logs_dir, f"migration_log_{current_datetime}.log")
+        log_file=os.path.join(logs_dir, f"AppRepoMapping_{current_datetime}.log")
         logger = AppRepoMapping.setup_logger(log_file)
-        summary_log_file = os.path.join(logs_dir, f"summary_log_{current_datetime}.txt")
+        summary_log_file = os.path.join(logs_dir, f"AppRepoMappingSummary_log_{current_datetime}.txt")
         summary_logger = AppRepoMapping.create_summary_logger(summary_log_file)
         if not os.path.exists(App_Repo_Mapping):
-            print("Application to repository mapping information is missing, please refer README.md to create mapping spreadhseet.")
+            print("Application to repository mapping information is missing, please refer README.md to create the mapping spreadsheet.")
             return
         AppRepoMapping.create_application_folders(App_Repo_Mapping, unzip_dir, src_dir_analyze, logger, summary_logger)
     
     elif output_type == 5:
-
         try:
-                HLScanAndOnboard.main()
-                
+            HLScanAndOnboard.main()
         except Exception as e:
-                logging.error(f'{e}')
-
+            logging.error(f'{e}')
     else:
-            print("Invalid choice.")
-
+        print("Invalid choice.")
 
 if __name__ == "__main__":
     main()
