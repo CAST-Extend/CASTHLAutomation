@@ -4,7 +4,6 @@
 ####  **Purpose:**
 The purpose of the script is to combining the below steps into single module to analysis of multiple applications using CAST Highlight. It streamlines the process of analyzing source code files for various applications, allowing users to specify configurations, define source paths, and customize analysis parameters through a configuration file. In user can run the specified step by entering the step number. 
 
-0. Create Highlight Domain and Application
 1. Download Metadata for GitHub organization
 2. Download source code for all repositories in the organization in batches
 3. Unzip the downloaded source code
@@ -13,16 +12,15 @@ The purpose of the script is to combining the below steps into single module to 
 
 
 #### **Key objectives and functionalities of the script include:**
-1.  **Creating Highlight Domain and Application**: The script automates the creating highlight domain and application.
-2.  **Download Metadata**: Metadata for all the repositories in organization first will be downloaded in JSON format and then saved in csv file by using github rest api.
-3.  **Download Source Code**: It will take the Repositories_Summary.csv as input checks the batch_number column. if the batch number column is not present it will asks us add that column with vaules. After that we need to run this step again then it will ask the batch number as input and it will download  all the repositories source code as ZIP file.
-4.  **Unziping Source Code**: In this step all the repositories source code will be extracted and will be moved to unzip folder.
-5.  **Application Folder Creation and Repositories Move**: First application folders will be creted and then repositories will be moved to application folder with its source code.
-6.	**CAST Highlight Onboarding**: The script automates the process of analyzing multiple applications by interfacing with the CAST Highlight via command-line execution. It eliminates the need for manual intervention in initiating and monitoring the analysis process for each application.
-7.	**Batch Processing**: Applications are grouped into batches, and each batch is processed concurrently, leveraging multi-threading to improve efficiency. This enables faster analysis of a large number of applications, enhancing overall productivity.
-8.	**Configurability**: Users can customize various parameters such as source paths, ignored directories/files, server URLs, authentication tokens, and batch sizes through the config.properties file. This allows flexibility in adapting the script to different environments and analysis requirements.
-9.	**Error Handling**: The script incorporates error handling mechanisms to detect and handle issues during the analysis process. It logs detailed error messages, including return codes from the HighLight Analyzer tool, facilitating troubleshooting and debugging.
-10.	**Output Generation**: Upon completion of analysis for each application, the script generates a summary CSV file containing the status, reasons for success or failure, and paths to log files. Additionally, detailed log files are created for each thread, providing comprehensive insights into the analysis execution.
+1.  **Download Metadata**: Metadata for all the repositories in organization first will be downloaded in JSON format and then saved in csv file by using github rest api.
+2.  **Download Source Code**: It will take the Repositories_Summary.csv as input checks the batch_number column. if the batch number column is not present it will asks us add that column with vaules. After that we need to run this step again then it will ask the batch number as input and it will download  all the repositories source code as ZIP file.
+3.  **Unziping Source Code**: In this step all the repositories source code will be extracted and will be moved to unzip folder.
+4.  **Application Folder Creation and Repositories Move**: First application folders will be creted and then repositories will be moved to application folder with its source code.
+5.	**CAST Highlight Onboarding**: The script automates the process of analyzing multiple applications by interfacing with the CAST Highlight via command-line execution. It eliminates the need for manual intervention in initiating and monitoring the analysis process for each application.
+6.	**Batch Processing**: Applications are grouped into batches, and each batch is processed concurrently, leveraging multi-threading to improve efficiency. This enables faster analysis of a large number of applications, enhancing overall productivity.
+7.	**Configurability**: Users can customize various parameters such as source paths, ignored directories/files, server URLs, authentication tokens, and batch sizes through the config.properties file. This allows flexibility in adapting the script to different environments and analysis requirements.
+8.	**Error Handling**: The script incorporates error handling mechanisms to detect and handle issues during the analysis process. It logs detailed error messages, including return codes from the HighLight Analyzer tool, facilitating troubleshooting and debugging.
+9.	**Output Generation**: Upon completion of analysis for each application, the script generates a summary CSV file containing the status, reasons for success or failure, and paths to log files. Additionally, detailed log files are created for each thread, providing comprehensive insights into the analysis execution.
 Overall, the script aims to streamline and automate the process of application analysis, improving efficiency, accuracy, and ease of management for software development and quality assurance teams. By abstracting the complexities of manual analysis tasks and providing a configurable and scalable solution, it empowers users to perform thorough and consistent analysis across multiple applications with minimal effort.
  
 #### **Prerequisites:**
@@ -41,13 +39,14 @@ Overall, the script aims to streamline and automate the process of application a
 
 #### **Usage:**
 1.	**Execute Script**: Run the script by executing python CASTHL_Automation.py.
-2.  **Enter the choice**:  It asks the beolw choice. Entert the vaules from 0 to 5 one by one.
-		0) Create Highlight Domain and Application
+2.  **Enter the choice**:  It asks the beolw choice. Entert the vaules from 1 to 5 one by one.
+
 		1) Download Metadata for GitHub organization
 		2) Download source code for all repositories in the organization in batches
 		3) Unzip the downloaded source code
 		4) Create application folders and move repositories
 		5) Trigger CAST Highlight onboarding for the source code
+    
 3.	**Monitor Progress**: Monitor the console for progress updates on application analysis.
 4.	**Review Logs**: Check the log files generated in the specified log folder for detailed information about the analysis process.
 
