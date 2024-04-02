@@ -211,7 +211,7 @@ def process_batch(batch, thread_id, output_txt_file, output_csv_file, RESULTS, S
 def main():
     try:
         # Read properties from the config file
-        properties = read_properties_file(r'Config/config.properties')
+        properties = read_properties_file(r'../Config/config.properties')
         # Extract properties
         PERL = properties.get('highlight_perl_dir')
         ANALYZER_DIR = properties.get('highlight_analyzer_dir')
