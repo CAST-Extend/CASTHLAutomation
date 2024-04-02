@@ -75,16 +75,25 @@ def json_to_csv(json_filename, csv_filename):
             json_data = json.load(json_file)
               
         # Add additional headers
-        headers = ['id', 'name', 'default_branch', 'size', 'updated_at', 'clone_url','archive_url']
+        headers = ['id', 'name', 'default_branch', 'size', 'updated_at', 'clone_url','archive_url', 'batch_number']
         #headers.extend(additional_headers)
         
         # Write to CSV
         with open(csv_filename, 'w', newline='') as csv_file:
             writer = csv.DictWriter(csv_file, fieldnames=headers)
             writer.writeheader()
+            count = 0
+            batch_num = 1
             for entry in json_data:
                 # Extract data from each entry
                 row_data = {key: entry.get(key, '') for key in headers}
+
+                count=count+1
+                if count % 500 == 0:
+                    batch_num = batch_num + 1
+                row_data['batch_number'] = batch_num
+                # print(row_data)
+
                 # Write row to CSV
                 writer.writerow(row_data)
         print("Repo Summary CSV file generated successfully.")
@@ -135,6 +144,7 @@ def check_column_exists(file_path, column_name):
     except Exception as e:
         print(f"An error occurred: {e}")
         return False
+    
 def read_csv_data(file_path):
     """
     Reads data from a CSV file.
@@ -257,6 +267,28 @@ def download_and_save_code(application_name, repository_url, server_location, to
             log_start_end_time(application_name, start_time, end_time, total_time, start_end_log_file)
             log_processing(application_name, f"Failed: {e}", processing_log_file)
             print(f"Error downloading repository: {e}")
+
+def download_in_batch(batch, thread_id, src_dir, token, start_end_log_file, processing_log_file):
+    # thread_log_file = f"Repos_download_thread_{thread_id}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
+    # logging.basicConfig(filename=thread_log_file, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    # logging.info(f'Thread {thread_id} started.\n')
+    print(f'Thread {thread_id} started.\n')
+
+    start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # logging.info(f'Thread {thread_id} start time: {start_time}\n')
+    print(f'Thread {thread_id} start time: {start_time}\n')
+    # logging.info(f'Thread {thread_id} processing repos: {batch}\n')
+    # print(f'Thread {thread_id} processing repos: {batch}')
+
+    for repository in batch:
+        download_and_save_code(repository[1], repository[8], src_dir, token, start_end_log_file, processing_log_file)
+
+    end_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # logging.info(f'Thread {thread_id} end time: {end_time}\n')
+    print(f'Thread {thread_id} end time: {end_time}\n')
+    # logging.info(f'Thread {thread_id} finished.\n')
+    print(f'Thread {thread_id} finished.\n')
+
 def main():
     while True:
         current_datetime = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -304,7 +336,7 @@ def main():
             print("3. Unzip the downloaded source code")
             print("4. Create application folders and move repositories")
             print("5. Trigger CAST Highlight onboarding for the source code")
-            choice = input("Enter your choice (0/1/2/3/4/5): ")
+            choice = input("Enter your choice (1/2/3/4/5): ")
             
             if choice not in ['1', '2', '3', '4', '5']:
                 print("Invalid choice. Please enter 1, 2, 3, 4 or 5.")
@@ -316,7 +348,7 @@ def main():
             # Ask user if they want to continue
             continue_option = input("Do you want to run another query? (yes/no): ")
             if continue_option.lower() != 'yes':
-                break
+                exit(0)
 
 def main_operations(output_type, current_datetime, org_name, token, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, src_dir_analyze):
     if output_type == 1:
@@ -343,24 +375,49 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
             print(f"Column 'name' does not exist in file {output_csv_file_path}. Review the CSV file and rerun option 1.")
             return
         
-        batch = input("Enter batch number to download the source code: ")
-        start_end_log_file = os.path.join(logs_dir, f"RepoDownloadTime_{batch}_{current_datetime}.txt")
-        processing_log_file = os.path.join(logs_dir, f"RepoDownloadStatusLog_{batch}_{current_datetime}.txt")
-        if not os.path.exists(start_end_log_file):
-            with open(start_end_log_file, "w") as start_end_log:
-                start_end_log.write("Start Time\tEnd Time\tTotal Time Taken\n")
-        
-        if not os.path.exists(processing_log_file):
-            with open(processing_log_file, "w") as processing_log:
-                processing_log.write("Timestamp\tMessage\n")
-
-        open(start_end_log_file, 'w').close()
-        open(processing_log_file, 'w').close()
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
-        data = read_csv_data(output_csv_file_path)  
-        for repository in data:
-            if repository[8] == str(batch):
-                download_and_save_code(repository[1], repository[7], src_dir, token, start_end_log_file, processing_log_file)
+        data = read_csv_data(output_csv_file_path) 
+        batches = []
+        num_of_batches = int(data[-1][7])
+
+        for i in range(num_of_batches):
+            batch = []
+            for repository in data:
+                if int(repository[7]) == i+1:
+                    batch.append(repository)
+            batches.append(batch)
+
+        # for repository in data:
+        #     if repository[8] == str(batch):
+        #         download_and_save_code(repository[1], repository[7], src_dir, token, start_end_log_file, processing_log_file)
+
+        # Process batches using multi-threading
+        threads = []
+        for i, batch in enumerate(batches, start=1):
+
+            start_end_log_file = os.path.join(logs_dir, f"RepoDownloadTime_batch_{i}_{current_datetime}.txt")
+            processing_log_file = os.path.join(logs_dir, f"RepoDownloadStatusLog_batch_{i}_{current_datetime}.txt")
+            if not os.path.exists(start_end_log_file):
+                with open(start_end_log_file, "w") as start_end_log:
+                    start_end_log.write("Start Time\tEnd Time\tTotal Time Taken\n")
+            
+            if not os.path.exists(processing_log_file):
+                with open(processing_log_file, "w") as processing_log:
+                    processing_log.write("Timestamp\tMessage\n")
+
+            open(start_end_log_file, 'w').close()
+            open(processing_log_file, 'w').close()
+
+            thread = threading.Thread(target=download_in_batch, args=(batch, i, src_dir, token, start_end_log_file, processing_log_file))
+            threads.append(thread)
+
+        # Start threads
+        for t in threads:
+            t.start()
+
+        # Join threads to the main thread
+        for t in threads:
+            t.join()       
 
     elif output_type == 3:
         try:
