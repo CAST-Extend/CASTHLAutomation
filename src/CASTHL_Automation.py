@@ -336,10 +336,11 @@ def main():
             print("3. Unzip the downloaded source code")
             print("4. Create application folders and move repositories")
             print("5. Trigger CAST Highlight onboarding for the source code")
-            choice = input("Enter your choice (1/2/3/4/5): ")
+            print("6. Run all the steps in one go from 1 to 5")
+            choice = input("Enter your choice (1/2/3/4/5/6): ")
             
-            if choice not in ['1', '2', '3', '4', '5']:
-                print("Invalid choice. Please enter 1, 2, 3, 4 or 5.")
+            if choice not in ['1', '2', '3', '4', '5', '6']:
+                print("Invalid choice. Please enter 1, 2, 3, 4, 5 or 6.")
                 continue
 
             output_type = int(choice)
@@ -359,7 +360,8 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
         json_to_csv(output_file_path, output_csv_file_path)
         modify_archive_urls(output_csv_file_path)
         print(f"Refer Log file {log_file_path} for download log and time to download Metadata.")
-        print(f"CSV file generated {output_csv_file_path} with summary of repositories which can be used for downloading source code(Task-2).")
+        print(f"CSV file generated {output_csv_file_path} with summary of repositories which can be used for downloading source code(Task-2).\n")
+
     elif output_type == 2:
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
         if not os.path.exists(output_csv_file_path):
@@ -374,47 +376,34 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
         if not check_column_exists(output_csv_file_path, 'name'):
             print(f"Column 'name' does not exist in file {output_csv_file_path}. Review the CSV file and rerun option 1.")
             return
-        
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
         data = read_csv_data(output_csv_file_path) 
         batches = []
         num_of_batches = int(data[-1][7])
-
         for i in range(num_of_batches):
             batch = []
             for repository in data:
                 if int(repository[7]) == i+1:
                     batch.append(repository)
             batches.append(batch)
-
-        # for repository in data:
-        #     if repository[8] == str(batch):
-        #         download_and_save_code(repository[1], repository[7], src_dir, token, start_end_log_file, processing_log_file)
-
         # Process batches using multi-threading
         threads = []
         for i, batch in enumerate(batches, start=1):
-
             start_end_log_file = os.path.join(logs_dir, f"RepoDownloadTime_batch_{i}_{current_datetime}.txt")
             processing_log_file = os.path.join(logs_dir, f"RepoDownloadStatusLog_batch_{i}_{current_datetime}.txt")
             if not os.path.exists(start_end_log_file):
                 with open(start_end_log_file, "w") as start_end_log:
-                    start_end_log.write("Start Time\tEnd Time\tTotal Time Taken\n")
-            
+                    start_end_log.write("Start Time\tEnd Time\tTotal Time Taken\n")            
             if not os.path.exists(processing_log_file):
                 with open(processing_log_file, "w") as processing_log:
                     processing_log.write("Timestamp\tMessage\n")
-
             open(start_end_log_file, 'w').close()
             open(processing_log_file, 'w').close()
-
             thread = threading.Thread(target=download_in_batch, args=(batch, i, src_dir, token, start_end_log_file, processing_log_file))
             threads.append(thread)
-
         # Start threads
         for t in threads:
             t.start()
-
         # Join threads to the main thread
         for t in threads:
             t.join()       
@@ -440,8 +429,85 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
             HLScanAndOnboard.main()
         except Exception as e:
             logging.error(f'{e}')
+    
+    elif output_type == 6:
+
+        output_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Metadata.json")
+        log_file_path = os.path.join(logs_dir, f"{org_name}_Metadatadownload_{current_datetime}.log")
+        output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
+        get_all_repo_metadata(org_name, token, output_file_path, log_file_path)
+        json_to_csv(output_file_path, output_csv_file_path)
+        modify_archive_urls(output_csv_file_path)
+        print(f"Refer Log file {log_file_path} for download log and time to download Metadata.")
+        print(f"CSV file generated {output_csv_file_path} with summary of repositories which can be used for downloading source code(Task-2).\n")
+
+        output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
+        if not os.path.exists(output_csv_file_path):
+            print("Please run option 1 to download metadata first.")
+            return
+        if not check_column_exists(output_csv_file_path, 'batch_number'):
+            print(f"Column 'batch_number' does not exist in file {output_csv_file_path}. Create a new column with the name 'batch_number' and enter the number of the batch you want to run for download.")
+            return
+        if not check_column_exists(output_csv_file_path, 'repo_archive_download_api'):
+            print(f"Column 'repo_archive_download_api' does not exist in file {output_csv_file_path}. Review the CSV file and rerun option 1.")
+            return
+        if not check_column_exists(output_csv_file_path, 'name'):
+            print(f"Column 'name' does not exist in file {output_csv_file_path}. Review the CSV file and rerun option 1.")
+            return
+        output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
+        data = read_csv_data(output_csv_file_path) 
+        batches = []
+        num_of_batches = int(data[-1][7])
+        for i in range(num_of_batches):
+            batch = []
+            for repository in data:
+                if int(repository[7]) == i+1:
+                    batch.append(repository)
+            batches.append(batch)
+        # Process batches using multi-threading
+        threads = []
+        for i, batch in enumerate(batches, start=1):
+            start_end_log_file = os.path.join(logs_dir, f"RepoDownloadTime_batch_{i}_{current_datetime}.txt")
+            processing_log_file = os.path.join(logs_dir, f"RepoDownloadStatusLog_batch_{i}_{current_datetime}.txt")
+            if not os.path.exists(start_end_log_file):
+                with open(start_end_log_file, "w") as start_end_log:
+                    start_end_log.write("Start Time\tEnd Time\tTotal Time Taken\n")            
+            if not os.path.exists(processing_log_file):
+                with open(processing_log_file, "w") as processing_log:
+                    processing_log.write("Timestamp\tMessage\n")
+            open(start_end_log_file, 'w').close()
+            open(processing_log_file, 'w').close()
+            thread = threading.Thread(target=download_in_batch, args=(batch, i, src_dir, token, start_end_log_file, processing_log_file))
+            threads.append(thread)
+        # Start threads
+        for t in threads:
+            t.start()
+        # Join threads to the main thread
+        for t in threads:
+            t.join()
+
+        try:
+            UnzipFile.unzip_code(src_dir, unzip_dir, os.path.join(logs_dir, f"Unzip_Execution_{current_datetime}.log"), os.path.join(logs_dir, f"Unzip_Time_{current_datetime}.log"))
+        except Exception as e:
+            print(f"Error occurred during extraction: {e}")
+
+        log_file=os.path.join(logs_dir, f"AppRepoMapping_{current_datetime}.log")
+        logger = AppRepoMapping.setup_logger(log_file)
+        summary_log_file = os.path.join(logs_dir, f"AppRepoMappingSummary_log_{current_datetime}.txt")
+        summary_logger = AppRepoMapping.create_summary_logger(summary_log_file)
+        if not os.path.exists(App_Repo_Mapping):
+            print("Application to repository mapping information is missing, please refer README.md to create the mapping spreadsheet.")
+            return
+        AppRepoMapping.create_application_folders(App_Repo_Mapping, unzip_dir, src_dir_analyze, logger, summary_logger)
+
+        try:
+            HLScanAndOnboard.main()
+        except Exception as e:
+            logging.error(f'{e}')
+
     else:
         print("Invalid choice.")
+
 
 if __name__ == "__main__":
     main()

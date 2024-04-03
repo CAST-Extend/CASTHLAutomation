@@ -124,7 +124,7 @@ def create_application_folders(mapping_sheet, repo_folder, output_folder, logger
         
         if os.path.exists(repo_folder_path) and os.path.isdir(repo_folder_path):
             shutil.move(repo_folder_path, app_folder_path)
-            logger.info(f"Repository '{repo_name}' moved to application folder '{app_name}' with its contents.")
+            logger.info(f"Repository '{repo_name}' moved to application folder '{app_name}' with its contents.\n")
             summary_logger.info(f"{app_name};{repo_name};Passed")
             # Call the function to move and delete folders in the app folder
             move_and_delete_folders(app_folder_path, logger)

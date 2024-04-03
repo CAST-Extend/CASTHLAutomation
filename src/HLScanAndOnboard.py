@@ -5,6 +5,7 @@ import threading
 import logging
 import csv
 from datetime import datetime
+import math
 
 # Mapping dictionary for return codes and their corresponding messages
 return_code_messages = {
@@ -34,7 +35,7 @@ def read_properties_file(filename):
 def validate_config(properties):
     required_params = ['highlight_perl_dir', 'highlight_analyzer_dir', 'src_dir_analyze', 'IGNORED_DIR', 'IGNORED_PATHS', 'IGNORED_FILES',
                        'highlight_base_url', 'highlight_executable', 'logs_dir', 'highlight_company_id', 'highlight_token', 'config_dir', 'RESULTS',
-                       'highlight_application_mapping', 'BATCH_SIZE']
+                       'highlight_application_mapping', 'MAX_BATCHES']
     for key, value in properties.items():
         if key =='highlight_perl_dir' and not os.path.exists(value):
             print(f"Program stopped bacause {key} Folder -> {value} does not exists!")
@@ -211,7 +212,7 @@ def process_batch(batch, thread_id, output_txt_file, output_csv_file, RESULTS, S
 def main():
     try:
         # Read properties from the config file
-        properties = read_properties_file(r'../Config/config.properties')
+        properties = read_properties_file(r'Config/config.properties')
         # Extract properties
         PERL = properties.get('highlight_perl_dir')
         ANALYZER_DIR = properties.get('highlight_analyzer_dir')
@@ -227,8 +228,8 @@ def main():
         CONFIG = properties.get('config_dir')
         RESULTS = properties.get('RESULTS')
         APPLICATIONS_FILE_PATH = properties.get('highlight_application_mapping')
-        BATCH_SIZE = int(properties.get('BATCH_SIZE', 1))  # Default batch size is 1
-        MAX_BATCHES = properties.get('MAX_BATCHES')
+        # BATCH_SIZE = int(properties.get('BATCH_SIZE', 1))  # Default batch size is 1
+        MAX_BATCHES = int(properties.get('MAX_BATCHES'))
 
         datetime_now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         # Set up logging
@@ -284,28 +285,45 @@ def main():
         start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         logging.info(f'Start Time: {start_time}')
 
-        num_threads = BATCH_SIZE
-        num_batches = (len(applications) + num_threads - 1) // num_threads
+        # num_threads = BATCH_SIZE
+        # num_batches = (len(applications) + num_threads - 1) // num_threads
 
         # Divide applications into batches
-        if (MAX_BATCHES != None) and (MAX_BATCHES != '') and (num_batches > int(MAX_BATCHES)):
-            num_batches = int(MAX_BATCHES)
-            batches = create_fixed_batches(applications, num_batches)
-            for i, batch in enumerate(batches):
-                print(f"Batch {i+1}: {batch}\n")           
-        else:
-            num_threads = BATCH_SIZE
-            num_batches = (len(applications) + num_threads - 1) // num_threads
-            batches = [applications[i * num_threads:min((i + 1) * num_threads, len(applications))] for i in range(num_batches)]
-            for i, batch in enumerate(batches):
-                print(f"Batch {i+1}: {batch}\n") 
+        # if (MAX_BATCHES != None) and (MAX_BATCHES != '') and (num_batches > int(MAX_BATCHES)):
+        #     num_batches = int(MAX_BATCHES)
+        #     batches = create_fixed_batches(applications, num_batches)
+        #     for i, batch in enumerate(batches):
+        #         print(f"Batch {i+1}: {batch}\n")           
+        # else:
+        #     num_threads = BATCH_SIZE
+        #     num_batches = (len(applications) + num_threads - 1) // num_threads
+        #     batches = [applications[i * num_threads:min((i + 1) * num_threads, len(applications))] for i in range(num_batches)]
+        #     for i, batch in enumerate(batches):
+        #         print(f"Batch {i+1}: {batch}\n") 
+
+        if MAX_BATCHES > 20 or MAX_BATCHES <= 0:
+            print('Program stopped bacause MAX_BATCHES is Invalid! Please update value of MAX_BATCHES between 1 to 20 in Config/config.properties file.')
+            exit(0)
+
+        if len(applications) < MAX_BATCHES:
+            MAX_BATCHES = len(applications) 
+
+        batch_size = math.ceil(len(applications) / MAX_BATCHES)
+        num_batches = MAX_BATCHES
+
+        batches = [applications[i * batch_size:min((i + 1) * batch_size, len(applications))] for i in range(num_batches)]
+        for i, batch in enumerate(batches):
+            print(f"Batch-{i+1}: Size-{len(batch)}\n{batch}\n") 
 
         # Process batches using multi-threading
         threads = []
         for i, batch in enumerate(batches, start=1):
             thread = threading.Thread(target=process_batch, args=(batch, i, output_txt_file, output_csv_file, RESULTS, SOURCES, HIGHLIGHT_EXE, ANALYZER_DIR, PERL, URL, TOKEN, COMPANY_ID, IGNORED_DIR, IGNORED_PATHS, IGNORED_FILES))
             threads.append(thread)
-            thread.start()
+
+        # Start threads
+        for t in threads:
+            t.start()
 
         # Wait for all threads to complete
         for thread in threads:
