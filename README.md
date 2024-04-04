@@ -38,7 +38,7 @@ Overall, the script aims to streamline and automate the process of application a
 4.	**Prepare Input Data**: Prepare a file containing the list of applications to be analyzed, with each entry in the format ApplicationName;ApplicationID.
 
 #### **Usage:**
-1. Change directory to **src**
+1. Change directory to **src** if not already in src for the working directory.
 2.	**Execute Script**: Run the script by executing python CASTHL_Automation.py.
 3.  **Enter the choice**:  It asks the beolw choice. Entert the vaules from 1 to 5 one by one.
 
