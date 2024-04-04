@@ -79,8 +79,7 @@ Ensure the Config\config.properties and HLLogParser\config.properties file is co
 - **highlight_executable**: Path to the HighLight Analyzer executable file.
 - **highlight_company_id**: Identifier for the company.
 - **highlight_token**: Authentication token for server communication.
-- **BATCH_SIZE**: Number of applications to be processed concurrently (default is 1).
-- **MAX_BATCHES**: Maximum number of batches to process.
+- **MAX_BATCHES**: Maximum number of batches to process. This number cannot be more that 20.
 
  **DO NOT CHANGE THE BELOW SETTINGS**
  - **IGNORED_DIR**=test,jquery,third-party,lib,3rd-party,COTS,external,node_modules,Tests,Test,Testing,t.ds,.flow.js,.git,.svn,gradlew,.vscode,Samples,.git,.svn, gradle, .circleci, .azure, .vscode
