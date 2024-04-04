@@ -38,8 +38,9 @@ Overall, the script aims to streamline and automate the process of application a
 4.	**Prepare Input Data**: Prepare a file containing the list of applications to be analyzed, with each entry in the format ApplicationName;ApplicationID.
 
 #### **Usage:**
-1.	**Execute Script**: Run the script by executing python CASTHL_Automation.py.
-2.  **Enter the choice**:  It asks the beolw choice. Entert the vaules from 1 to 5 one by one.
+1. Change directory to **src**
+2.	**Execute Script**: Run the script by executing python CASTHL_Automation.py.
+3.  **Enter the choice**:  It asks the beolw choice. Entert the vaules from 1 to 5 one by one.
 
 		1) Download Metadata for GitHub organization
 		2) Download source code for all repositories in the organization in batches
@@ -47,8 +48,8 @@ Overall, the script aims to streamline and automate the process of application a
 		4) Create application folders and move repositories
 		5) Trigger CAST Highlight onboarding for the source code
     
-3.	**Monitor Progress**: Monitor the console for progress updates on application analysis.
-4.	**Review Logs**: Check the log files generated in the specified log folder for detailed information about the analysis process.
+4.	**Monitor Progress**: Monitor the console for progress updates on application analysis.
+5.	**Review Logs**: Check the log files generated in the specified log folder for detailed information about the analysis process.
 
 ### **Configuration:**
 Ensure the Config\config.properties and HLLogParser\config.properties file is correctly configured with the following parameters:
