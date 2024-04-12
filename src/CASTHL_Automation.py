@@ -289,6 +289,27 @@ def download_in_batch(batch, thread_id, src_dir, token, start_end_log_file, proc
     # logging.info(f'Thread {thread_id} finished.\n')
     print(f'Thread {thread_id} finished.\n')
 
+def find_long_paths(parent_folder, max_length=260):
+    long_paths = []
+
+    applications = []
+    for app_name in os.listdir(parent_folder):
+        if os.path.isdir(os.path.join(parent_folder, app_name)):
+            app_path = os.path.join(parent_folder, app_name)
+            applications.append((app_name, app_path))
+    # print(applications)
+
+    for app_name, app_path in applications:
+        # Walk through the directory tree
+        for root, dirs, files in os.walk(app_path):
+            for file in files:
+                # Construct the full path of the file
+                file_path = os.path.join(root, file)
+                # Check if the path length exceeds the limit
+                if len(file_path) > max_length:
+                    long_paths.append((app_name,file_path))
+    return long_paths
+
 def main():
     while True:
         current_datetime = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -335,12 +356,13 @@ def main():
             print("2. Download source code for all repositories in the organization in batches")
             print("3. Unzip the downloaded source code")
             print("4. Create application folders and move repositories")
-            print("5. Trigger CAST Highlight onboarding for the source code")
-            print("6. Run all the steps in one go from 1 to 5")
-            choice = input("Enter your choice (1/2/3/4/5/6): ")
+            print("5. Get applications long path")
+            print("6. Trigger CAST Highlight onboarding for the source code")
+            print("7. Run all the steps in one go from 1 to 6")
+            choice = input("Enter your choice (1/2/3/4/5/6/7): ")
             
-            if choice not in ['1', '2', '3', '4', '5', '6']:
-                print("Invalid choice. Please enter 1, 2, 3, 4, 5 or 6.")
+            if choice not in ['1', '2', '3', '4', '5', '6', '7']:
+                print("Invalid choice. Please enter 1, 2, 3, 4, 5, 6 or 7.")
                 continue
 
             output_type = int(choice)
@@ -423,15 +445,34 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
             print("Application to repository mapping information is missing, please refer README.md to create the mapping spreadsheet.")
             return
         AppRepoMapping.create_application_folders(App_Repo_Mapping, unzip_dir, src_dir_analyze, logger, summary_logger)
-    
+
     elif output_type == 5:
+        parent_folder = src_dir_analyze
+        if os.path.exists(parent_folder):
+            long_paths = find_long_paths(parent_folder)
+            if long_paths:
+                # Create the output csv file
+                long_path_csv_file = os.path.join(output_dir, f'Application_Long_Path_{current_datetime}.csv')
+                with open(long_path_csv_file, 'w', newline='') as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow(['Application Name', 'Long Path'])
+                    for app_name, app_path in long_paths:
+                        writer.writerow([app_name, app_path])
+                print(f"Applications Long path saved to '{long_path_csv_file}'.\n")
+            else:
+                print("No paths exceeding the length limit found.\n")
+        else:
+            print("The specified parent folder does not exist.\n")
+    
+    elif output_type == 6:
         try:
             HLScanAndOnboard.main()
         except Exception as e:
             logging.error(f'{e}')
     
-    elif output_type == 6:
+    elif output_type == 7:
 
+        # 1. Download Metadata for GitHub organization
         output_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Metadata.json")
         log_file_path = os.path.join(logs_dir, f"{org_name}_Metadatadownload_{current_datetime}.log")
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
@@ -441,6 +482,7 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
         print(f"Refer Log file {log_file_path} for download log and time to download Metadata.")
         print(f"CSV file generated {output_csv_file_path} with summary of repositories which can be used for downloading source code(Task-2).\n")
 
+        # 2. Download source code for all repositories in the organization in batches
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
         if not os.path.exists(output_csv_file_path):
             print("Please run option 1 to download metadata first.")
@@ -486,11 +528,13 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
         for t in threads:
             t.join()
 
+        # 3. Unzip the downloaded source code
         try:
             UnzipFile.unzip_code(src_dir, unzip_dir, os.path.join(logs_dir, f"Unzip_Execution_{current_datetime}.log"), os.path.join(logs_dir, f"Unzip_Time_{current_datetime}.log"))
         except Exception as e:
             print(f"Error occurred during extraction: {e}")
 
+        # 4. Create application folders and move repositories
         log_file=os.path.join(logs_dir, f"AppRepoMapping_{current_datetime}.log")
         logger = AppRepoMapping.setup_logger(log_file)
         summary_log_file = os.path.join(logs_dir, f"AppRepoMappingSummary_log_{current_datetime}.txt")
@@ -500,6 +544,25 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
             return
         AppRepoMapping.create_application_folders(App_Repo_Mapping, unzip_dir, src_dir_analyze, logger, summary_logger)
 
+        # 5. Get applications long path
+        parent_folder = src_dir_analyze
+        if os.path.exists(parent_folder):
+            long_paths = find_long_paths(parent_folder)
+            if long_paths:
+                # Create the output csv file
+                long_path_csv_file = os.path.join(output_dir, f'Application_Long_Path_{current_datetime}.csv')
+                with open(long_path_csv_file, 'w', newline='') as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow(['Application Name', 'Long Path'])
+                    for app_name, app_path in long_paths:
+                        writer.writerow([app_name, app_path])
+                print(f"Applications Long path saved to '{long_path_csv_file}'.\n")
+            else:
+                print("No paths exceeding the length limit found.\n")
+        else:
+            print("The specified parent folder does not exist.\n")
+
+        # 6. Trigger CAST Highlight onboarding for the source code
         try:
             HLScanAndOnboard.main()
         except Exception as e:
