@@ -35,7 +35,7 @@ def read_properties_file(filename):
 def validate_config(properties):
     required_params = ['highlight_perl_dir', 'highlight_analyzer_dir', 'src_dir_analyze', 'IGNORED_DIR', 'IGNORED_PATHS', 'IGNORED_FILES',
                        'highlight_base_url', 'highlight_executable', 'logs_dir', 'highlight_company_id', 'highlight_token', 'config_dir', 'RESULTS',
-                       'highlight_application_mapping', 'MAX_BATCHES']
+                       'highlight_application_mapping', 'MAX_BATCHES', 'Keyword_Scan']
     for key, value in properties.items():
         if key =='highlight_perl_dir' and not os.path.exists(value):
             print(f"Program stopped bacause {key} Folder -> {value} does not exists!")
@@ -73,6 +73,10 @@ def validate_config(properties):
             if not value.endswith(".com") or not validators.url(value):
                 print(f"Program stopped bacause The URL '{value}' is not valid.")
                 raise ValueError(f"Program stopped bacause The URL '{value}' is not valid.")
+            
+        if key =='Keyword_Scan' and not os.path.isfile(value):
+            print((f"Program stopped bacause {key} File -> {value} does not exists."))
+            raise ValueError(f"Program stopped bacause {key} File -> {value} does not exists.")
         
     missing_params = [param for param in required_params if param not in properties]
     if missing_params:
@@ -125,7 +129,7 @@ def calculate_execution_time(log_file_path):
         logging.error(f"Error reading log file {log_file_path}: {str(e)}")
         return None
 
-def process_application(app_name, app_id, log_file, output_txt_file, output_csv_file, SOURCES, HIGHLIGHT_EXE, ANALYZER_DIR, PERL, URL, TOKEN, COMPANY_ID, IGNORED_DIR, IGNORED_PATHS, IGNORED_FILES, RESULTS):
+def process_application(app_name, app_id, log_file, output_txt_file, output_csv_file, SOURCES, HIGHLIGHT_EXE, ANALYZER_DIR, PERL, URL, TOKEN, COMPANY_ID, IGNORED_DIR, IGNORED_PATHS, IGNORED_FILES, RESULTS, Keyword_Scan):
     try:
         if os.path.exists(log_file):
             os.remove(log_file)
@@ -149,6 +153,7 @@ def process_application(app_name, app_id, log_file, output_txt_file, output_csv_
                 '--tokenAuth=' + TOKEN,
                 '--applicationId=' + app_id,
                 '--companyId=' + COMPANY_ID,
+                '--keywordScan=' + Keyword_Scan,
                 '--ignoreDirectories=' + IGNORED_DIR,
                 '--ignorePaths=' + IGNORED_PATHS,
                 '--ignoreFiles=' + IGNORED_FILES
@@ -192,7 +197,7 @@ def process_application(app_name, app_id, log_file, output_txt_file, output_csv_
         writer = csv.writer(txtfile)
         writer.writerow([app_name, status, reason, log_file, start_time, end_time, execution_time])
 
-def process_batch(batch, thread_id, output_txt_file, output_csv_file, RESULTS, SOURCES, HIGHLIGHT_EXE, ANALYZER_DIR, PERL, URL, TOKEN, COMPANY_ID, IGNORED_DIR, IGNORED_PATHS, IGNORED_FILES):
+def process_batch(batch, thread_id, output_txt_file, output_csv_file, RESULTS, SOURCES, HIGHLIGHT_EXE, ANALYZER_DIR, PERL, URL, TOKEN, COMPANY_ID, IGNORED_DIR, IGNORED_PATHS, IGNORED_FILES, Keyword_Scan):
     thread_log_file = f"thread_{thread_id}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
     logging.basicConfig(filename=thread_log_file, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(f'Thread {thread_id} started.')
@@ -203,7 +208,7 @@ def process_batch(batch, thread_id, output_txt_file, output_csv_file, RESULTS, S
     for app_name, app_id in batch:
         #log_file = os.path.join(LOG_FOLDER, f'HLAutomation_{app_name}.log')
         log_file = os.path.join(RESULTS, rf'{app_name}\HLAutomation.log')
-        process_application(app_name, app_id, log_file, output_txt_file, output_csv_file, SOURCES, HIGHLIGHT_EXE, ANALYZER_DIR, PERL, URL, TOKEN, COMPANY_ID, IGNORED_DIR, IGNORED_PATHS, IGNORED_FILES, RESULTS)
+        process_application(app_name, app_id, log_file, output_txt_file, output_csv_file, SOURCES, HIGHLIGHT_EXE, ANALYZER_DIR, PERL, URL, TOKEN, COMPANY_ID, IGNORED_DIR, IGNORED_PATHS, IGNORED_FILES, RESULTS, Keyword_Scan)
 
     end_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     logging.info(f'Thread {thread_id} end time: {end_time}')
@@ -227,6 +232,7 @@ def main():
         TOKEN = properties.get('highlight_token')
         CONFIG = properties.get('config_dir')
         RESULTS = properties.get('RESULTS')
+        Keyword_Scan = properties.get('Keyword_Scan')
         APPLICATIONS_FILE_PATH = properties.get('highlight_application_mapping')
         # BATCH_SIZE = int(properties.get('BATCH_SIZE', 1))  # Default batch size is 1
         MAX_BATCHES = int(properties.get('MAX_BATCHES'))
@@ -318,7 +324,7 @@ def main():
         # Process batches using multi-threading
         threads = []
         for i, batch in enumerate(batches, start=1):
-            thread = threading.Thread(target=process_batch, args=(batch, i, output_txt_file, output_csv_file, RESULTS, SOURCES, HIGHLIGHT_EXE, ANALYZER_DIR, PERL, URL, TOKEN, COMPANY_ID, IGNORED_DIR, IGNORED_PATHS, IGNORED_FILES))
+            thread = threading.Thread(target=process_batch, args=(batch, i, output_txt_file, output_csv_file, RESULTS, SOURCES, HIGHLIGHT_EXE, ANALYZER_DIR, PERL, URL, TOKEN, COMPANY_ID, IGNORED_DIR, IGNORED_PATHS, IGNORED_FILES, Keyword_Scan))
             threads.append(thread)
 
         # Start threads
