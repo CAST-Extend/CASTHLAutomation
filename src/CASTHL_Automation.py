@@ -75,7 +75,7 @@ def json_to_csv(json_filename, csv_filename):
             json_data = json.load(json_file)
               
         # Add additional headers
-        headers = ['id', 'name', 'default_branch', 'size', 'updated_at', 'clone_url','archive_url', 'batch_number']
+        headers = ['id', 'name', 'default_branch', 'size', 'updated_at', 'clone_url','archive_url', 'batch_number', 'Download', 'Download_Status']
         #headers.extend(additional_headers)
         
         # Write to CSV
@@ -92,6 +92,7 @@ def json_to_csv(json_filename, csv_filename):
                 if count % 500 == 0:
                     batch_num = batch_num + 1
                 row_data['batch_number'] = batch_num
+                row_data['Download'] = 'Y'
                 # print(row_data)
 
                 # Write row to CSV
@@ -159,7 +160,7 @@ def read_csv_data(file_path):
             reader = csv.reader(file)
             next(reader)  # Skip the header row
             for row in reader:
-                data.append((row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]))  # Assuming 4 columns in the CSV
+                data.append((row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10]))  # Assuming 4 columns in the CSV
     except Exception as e:
         print(f"Error reading CSV file: {e}")
     return data
@@ -211,8 +212,25 @@ def download_zip_archive(repository_url, repository_path, token):
         return True
     else:
         return False
+    
+def update_download_status(csv_file, repo_id, download_status):
+    # Read the CSV file
+    with open(csv_file, 'r', newline='') as file:
+        reader = csv.DictReader(file)
+        rows = list(reader)
+    
+    # Modify the data in the specified column
+    for row in rows:
+        if row['id']==repo_id:
+            row['Download_Status'] = download_status
+    
+    # Write the updated data back to the CSV file
+    with open(csv_file, 'w', newline='') as file:
+        writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
 
-def download_and_save_code(application_name, repository_url, server_location, token, start_end_log_file, processing_log_file):
+def download_and_save_code(application_name, download_status, repository_url, server_location, token, start_end_log_file, processing_log_file, output_csv_file_path, repo_id):
     """
     Downloads and saves code from a repository.
     Parameters:
@@ -255,12 +273,17 @@ def download_and_save_code(application_name, repository_url, server_location, to
                         log_start_end_time(application_name, start_time, end_time, total_time, start_end_log_file)
                         log_processing(application_name, "Successful", processing_log_file)
                         print(f"Repository '{application_name}' downloaded successfully as ZIP file to '{repository_zip_path}'.\n")
+                        download_status = 'Success'
+                        update_download_status(output_csv_file_path, repo_id, download_status)
+
             else:
                 end_time = datetime.datetime.now()
                 total_time = end_time - start_time
                 log_start_end_time(application_name, start_time, end_time, total_time, start_end_log_file)
                 log_processing(application_name, "Failed", processing_log_file)
                 print(f"Failed to download repository '{application_name}'.\n")
+                download_status = 'Failed'
+                update_download_status(output_csv_file_path, repo_id, download_status)
         except Exception as e:
             end_time = datetime.datetime.now()
             total_time = end_time - start_time
@@ -268,7 +291,7 @@ def download_and_save_code(application_name, repository_url, server_location, to
             log_processing(application_name, f"Failed: {e}", processing_log_file)
             print(f"Error downloading repository: {e}")
 
-def download_in_batch(batch, thread_id, src_dir, token, start_end_log_file, processing_log_file):
+def download_in_batch(batch, thread_id, src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path):
     # thread_log_file = f"Repos_download_thread_{thread_id}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
     # logging.basicConfig(filename=thread_log_file, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     # logging.info(f'Thread {thread_id} started.\n')
@@ -281,7 +304,10 @@ def download_in_batch(batch, thread_id, src_dir, token, start_end_log_file, proc
     # print(f'Thread {thread_id} processing repos: {batch}')
 
     for repository in batch:
-        download_and_save_code(repository[1], repository[8], src_dir, token, start_end_log_file, processing_log_file)
+        if repository[8] == 'Y':
+            download_and_save_code(repository[1], repository[9], repository[10], src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path, repository[0])
+        else:
+            print(f"User Marked Download='N' Hence Skipping the Download of Repo -> '{repository[1]}'\n")
 
     end_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # logging.info(f'Thread {thread_id} end time: {end_time}\n')
@@ -421,7 +447,7 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
                     processing_log.write("Timestamp\tMessage\n")
             open(start_end_log_file, 'w').close()
             open(processing_log_file, 'w').close()
-            thread = threading.Thread(target=download_in_batch, args=(batch, i, src_dir, token, start_end_log_file, processing_log_file))
+            thread = threading.Thread(target=download_in_batch, args=(batch, i, src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path))
             threads.append(thread)
         # Start threads
         for t in threads:
@@ -519,7 +545,7 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
                     processing_log.write("Timestamp\tMessage\n")
             open(start_end_log_file, 'w').close()
             open(processing_log_file, 'w').close()
-            thread = threading.Thread(target=download_in_batch, args=(batch, i, src_dir, token, start_end_log_file, processing_log_file))
+            thread = threading.Thread(target=download_in_batch, args=(batch, i, src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path))
             threads.append(thread)
         # Start threads
         for t in threads:
