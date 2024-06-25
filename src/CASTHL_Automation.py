@@ -75,7 +75,7 @@ def json_to_csv(json_filename, csv_filename):
             json_data = json.load(json_file)
               
         # Add additional headers
-        headers = ['id', 'name', 'default_branch', 'size', 'updated_at', 'clone_url','archive_url', 'batch_number', 'Download', 'Download_Status']
+        headers = ['id', 'name', 'default_branch', 'size', 'updated_at', 'clone_url','archive_url', 'batch_number']
         #headers.extend(additional_headers)
         
         # Write to CSV
@@ -92,7 +92,6 @@ def json_to_csv(json_filename, csv_filename):
                 if count % 500 == 0:
                     batch_num = batch_num + 1
                 row_data['batch_number'] = batch_num
-                row_data['Download'] = 'Y'
                 # print(row_data)
 
                 # Write row to CSV
@@ -122,6 +121,16 @@ def modify_archive_urls(csv_file_path):
 
     # Write the modified DataFrame back to the original CSV file
     df.to_csv(csv_file_path, index=False)
+
+def add_new_columns_to_csv(output_csv_file_path):
+    df = pd.read_csv(output_csv_file_path)
+
+    # Add two new columns with some default values or calculations
+    df['Download'] = 'Y'  # You can also use a calculation or other values
+    df['Download_Status'] = ''
+
+     # Path to save the updated CSV file
+    df.to_csv(output_csv_file_path, index=False)    
 
 def check_column_exists(file_path, column_name):
     try:
@@ -304,8 +313,8 @@ def download_in_batch(batch, thread_id, src_dir, token, start_end_log_file, proc
     # print(f'Thread {thread_id} processing repos: {batch}')
 
     for repository in batch:
-        if repository[8] == 'Y':
-            download_and_save_code(repository[1], repository[9], repository[10], src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path, repository[0])
+        if repository[9] == 'Y':
+            download_and_save_code(repository[1], repository[10], repository[8], src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path, repository[0])
         else:
             print(f"User Marked Download='N' Hence Skipping the Download of Repo -> '{repository[1]}'\n")
 
@@ -407,6 +416,7 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
         get_all_repo_metadata(org_name, token, output_file_path, log_file_path)
         json_to_csv(output_file_path, output_csv_file_path)
         modify_archive_urls(output_csv_file_path)
+        add_new_columns_to_csv(output_csv_file_path)
         print(f"Refer Log file {log_file_path} for download log and time to download Metadata.")
         print(f"CSV file generated {output_csv_file_path} with summary of repositories which can be used for downloading source code(Task-2).\n")
 
@@ -505,6 +515,7 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
         get_all_repo_metadata(org_name, token, output_file_path, log_file_path)
         json_to_csv(output_file_path, output_csv_file_path)
         modify_archive_urls(output_csv_file_path)
+        add_new_columns_to_csv(output_csv_file_path)
         print(f"Refer Log file {log_file_path} for download log and time to download Metadata.")
         print(f"CSV file generated {output_csv_file_path} with summary of repositories which can be used for downloading source code(Task-2).\n")
 
