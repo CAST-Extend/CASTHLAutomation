@@ -107,7 +107,7 @@ def json_to_csv(json_filename, csv_filename):
 
 def modify_archive_urls(csv_file_path):
     # Read the CSV file
-    df = pd.read_csv(csv_file_path)
+    df = pd.read_csv(csv_file_path, encoding='latin-1')
 
     # Define a function to replace placeholders in archive_url and create a new column
     def replace_url(row):
@@ -610,4 +610,7 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
 
 
 if __name__ == "__main__":
-    main()
+    try:    
+        main()
+    except Exception as e:
+        print(f'{e}')
