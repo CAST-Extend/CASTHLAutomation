@@ -135,7 +135,7 @@ def add_new_columns_to_csv(output_csv_file_path):
 def check_column_exists(file_path, column_name):
     try:
         # Read the CSV file
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(file_path, encoding='latin-1')
         
         # Check if the column exists
         if column_name not in df.columns:
@@ -165,7 +165,7 @@ def read_csv_data(file_path):
     """
     data = []
     try:
-        with open(file_path, mode='r', newline='', encoding='utf-8') as file:
+        with open(file_path, mode='r', newline='', encoding='latin-1') as file:
             reader = csv.reader(file)
             next(reader)  # Skip the header row
             for row in reader:
@@ -224,7 +224,7 @@ def download_zip_archive(repository_url, repository_path, token):
     
 def update_download_status(csv_file, repo_id, download_status):
     # Read the CSV file
-    with open(csv_file, 'r', newline='') as file:
+    with open(csv_file, 'r', newline='', encoding='latin-1') as file:
         reader = csv.DictReader(file)
         rows = list(reader)
     
@@ -234,7 +234,7 @@ def update_download_status(csv_file, repo_id, download_status):
             row['Download_Status'] = download_status
     
     # Write the updated data back to the CSV file
-    with open(csv_file, 'w', newline='') as file:
+    with open(csv_file, 'w', newline='', encoding='latin-1') as file:
         writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
         writer.writeheader()
         writer.writerows(rows)
