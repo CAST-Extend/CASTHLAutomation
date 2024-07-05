@@ -14,10 +14,10 @@ def extract_and_move_contents(zip_ref, extract_path):
     zip_ref.extractall(temp_extract_path)
 
     # Move contents of the inner folder to the outer directory
-    inner_folder = os.listdir(temp_extract_path)[0]
+    inner_folder = os.listdir(temp_extract_path)[0].rstrip()
     inner_folder_path = os.path.join(temp_extract_path, inner_folder)
     for item in os.listdir(inner_folder_path):
-        item_path = os.path.join(inner_folder_path, item)
+        item_path = os.path.join(inner_folder_path, item.rstrip())
         shutil.move(item_path, extract_path)
 
     # Delete the inner folder
@@ -31,8 +31,8 @@ def unzip_code(root_folder, extract_path, execution_log_path, time_to_unzip_log_
     failure_count = 0
     
     try:
-        with open(execution_log_path, "a") as execution_log, \
-                open(time_to_unzip_log_path, "a") as time_to_unzip_log:
+        with open(execution_log_path, "a", encoding="utf-8") as execution_log, \
+                open(time_to_unzip_log_path, "a", encoding="utf-8") as time_to_unzip_log:
 
             for root, dirs, files in os.walk(root_folder):
                 # Check if the current depth is at level 2
@@ -65,29 +65,32 @@ def unzip_code(root_folder, extract_path, execution_log_path, time_to_unzip_log_
                                     # Extract and move contents
                                     extract_and_move_contents(zip_ref, repo_extract_path)
 
-                            except Exception as e:
+                            except Exception as e:                               
+                                timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S.%f")
+                                execution_log.write(f"{execution_message}Failed: {e}\n")
+                                print(f"Extraction failed for {repo_path}: {e}\n")
                                 failure_count += 1
-                                raise ValueError(f"Extraction failed for {repo_path}: {e}\n")
 
-                            end_time = datetime.datetime.now()
-                            total_time = end_time - start_time
+                            else:
+                                end_time = datetime.datetime.now()
+                                total_time = end_time - start_time
 
-                            execution_log.write(f"{execution_message}Successful\n")
-                            time_to_unzip_log.write(f"{repo_name} | {start_time} | {end_time} | {total_time}\n")
-                            print(f"Extraction completed for {repo_path}\n")
-                            success_count += 1
+                                execution_log.write(f"{execution_message}Successful\n")
+                                time_to_unzip_log.write(f"{repo_name} | {start_time} | {end_time} | {total_time}\n")
+                                print(f"Extraction completed for {repo_path}\n")
+                                success_count += 1
 
     except Exception as e:
         print(f"Extraction failed: {e}")
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S.%f")
-        execution_message = f"{timestamp} | Failed: {str(e)}\n"
-        with open(execution_log_path, "a") as execution_log:
-            execution_log.write(execution_message)
-        failure_count += 1
+        #timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S.%f")
+        #execution_message = f"{timestamp} | Failed: {str(e)}\n"
+        #with open(execution_log_path, "a") as execution_log:
+        #    execution_log.write(execution_message)
+        #failure_count += 1
 
     finally:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S.%f")
-        with open(execution_log_path, "a") as execution_log:
+        with open(execution_log_path, "a", encoding="utf-8") as execution_log:
             execution_log.write(f"{timestamp} | Summary: Processed {success_count} zip files successfully, {failure_count} zip files failed.\n")
 
 
