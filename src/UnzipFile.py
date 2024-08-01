@@ -9,22 +9,25 @@ import shutil
 log_lock = Lock()
 
 def extract_and_move_contents(zip_ref, extract_path):
-    # Extract all contents of the zip file to a temporary directory
-    temp_extract_path = os.path.join(extract_path, "__temp__")
-    zip_ref.extractall(temp_extract_path)
+    try:
+        # Extract all contents of the zip file to a temporary directory
+        temp_extract_path = os.path.join(extract_path, "__temp__")
+        zip_ref.extractall(temp_extract_path)
 
-    # Move contents of the inner folder to the outer directory
-    inner_folder = os.listdir(temp_extract_path)[0].rstrip()
-    inner_folder_path = os.path.join(temp_extract_path, inner_folder)
-    for item in os.listdir(inner_folder_path):
-        item_path = os.path.join(inner_folder_path, item.rstrip())
-        shutil.move(item_path, extract_path)
+        # Move contents of the inner folder to the outer directory
+        inner_folder = os.listdir(temp_extract_path)[0].rstrip()
+        inner_folder_path = os.path.join(temp_extract_path, inner_folder)
+        for item in os.listdir(inner_folder_path):
+            item_path = os.path.join(inner_folder_path, item.rstrip())
+            shutil.move(item_path, extract_path)
 
-    # Delete the inner folder
-    shutil.rmtree(inner_folder_path)
+        # Delete the inner folder
+        shutil.rmtree(inner_folder_path)
 
-    # Remove the temporary directory
-    os.rmdir(temp_extract_path)
+        # Remove the temporary directory
+        os.rmdir(temp_extract_path)
+    except Exception as e:
+        print(f"Error while executing extract_and_move_contents() function: {e}")
 
 def unzip_code(root_folder, extract_path, execution_log_path, time_to_unzip_log_path):
     success_count = 0
@@ -81,7 +84,7 @@ def unzip_code(root_folder, extract_path, execution_log_path, time_to_unzip_log_
                                 success_count += 1
 
     except Exception as e:
-        print(f"Extraction failed: {e}")
+        print(f"Error while executing unzip_code() function: {e}")
         #timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S.%f")
         #execution_message = f"{timestamp} | Failed: {str(e)}\n"
         #with open(execution_log_path, "a") as execution_log:
@@ -95,28 +98,31 @@ def unzip_code(root_folder, extract_path, execution_log_path, time_to_unzip_log_
 
 
 def create_and_run_batches(config):
-    repos_folder = config['Paths']['repos_folder']
-    extract_folder = config['Paths']['extract_folder']
-    logs_folder = config['Paths']['logs_folder']
-    os.makedirs(logs_folder, exist_ok=True)
+    try:
+        repos_folder = config['Paths']['repos_folder']
+        extract_folder = config['Paths']['extract_folder']
+        logs_folder = config['Paths']['logs_folder']
+        os.makedirs(logs_folder, exist_ok=True)
 
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
-    execution_log_path = os.path.join(logs_folder, f"execution_log_{timestamp}.txt")
-    time_to_unzip_log_path = os.path.join(logs_folder, f"time_to_unzip_log_{timestamp}.txt")
+        execution_log_path = os.path.join(logs_folder, f"execution_log_{timestamp}.txt")
+        time_to_unzip_log_path = os.path.join(logs_folder, f"time_to_unzip_log_{timestamp}.txt")
 
-    pool_args = []
-    for root, dirs, files in os.walk(repos_folder):
-        for file in files:
-            if file.endswith(".zip"):
-                repo_name = os.path.splitext(file)[0]
-                repo_path = os.path.join(root, file)
-                extract_path = os.path.join(extract_folder, repo_name)
-                os.makedirs(extract_path, exist_ok=True)
-                pool_args.append((repo_path, extract_path, repo_name, execution_log_path, time_to_unzip_log_path, 0))
+        pool_args = []
+        for root, dirs, files in os.walk(repos_folder):
+            for file in files:
+                if file.endswith(".zip"):
+                    repo_name = os.path.splitext(file)[0]
+                    repo_path = os.path.join(root, file)
+                    extract_path = os.path.join(extract_folder, repo_name)
+                    os.makedirs(extract_path, exist_ok=True)
+                    pool_args.append((repo_path, extract_path, repo_name, execution_log_path, time_to_unzip_log_path, 0))
 
-    with Pool() as pool:
-        pool.map(unzip_code, pool_args)
+        with Pool() as pool:
+            pool.map(unzip_code, pool_args)
+    except Exception as e:
+        print(f"Error while executing create_and_run_batches() function: {e}")
 
 
 def main():

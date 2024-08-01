@@ -106,31 +106,37 @@ def json_to_csv(json_filename, csv_filename):
         print(f"An error occurred: {e}")
 
 def modify_archive_urls(csv_file_path):
-    # Read the CSV file
-    df = pd.read_csv(csv_file_path, encoding='latin-1')
+    try:
+        # Read the CSV file
+        df = pd.read_csv(csv_file_path, encoding='latin-1')
 
-    # Define a function to replace placeholders in archive_url and create a new column
-    def replace_url(row):
-        archive_format = 'zipball/'
-        ref = row['default_branch']
-        final_url = row['archive_url'].replace('{archive_format}', archive_format).replace('{/ref}', ref)
-        return final_url
+        # Define a function to replace placeholders in archive_url and create a new column
+        def replace_url(row):
+            archive_format = 'zipball/'
+            ref = row['default_branch']
+            final_url = row['archive_url'].replace('{archive_format}', archive_format).replace('{/ref}', ref)
+            return final_url
 
-    # Apply the function to create the new column 'archive_url_download'
-    df['repo_archive_download_api'] = df.apply(replace_url, axis=1)
+        # Apply the function to create the new column 'archive_url_download'
+        df['repo_archive_download_api'] = df.apply(replace_url, axis=1)
 
-    # Write the modified DataFrame back to the original CSV file
-    df.to_csv(csv_file_path, index=False)
+        # Write the modified DataFrame back to the original CSV file
+        df.to_csv(csv_file_path, index=False)
+    except Exception as e:
+        print(f"Error while executing modify_archive_urls() function: {e}")
 
 def add_new_columns_to_csv(output_csv_file_path):
-    df = pd.read_csv(output_csv_file_path)
+    try:
+        df = pd.read_csv(output_csv_file_path, encoding='latin-1')
 
-    # Add two new columns with some default values or calculations
-    df['Download'] = 'Y'  # You can also use a calculation or other values
-    df['Download_Status'] = ''
+        # Add two new columns with some default values or calculations
+        df['Download'] = 'Y'  # You can also use a calculation or other values
+        df['Download_Status'] = ''
 
-     # Path to save the updated CSV file
-    df.to_csv(output_csv_file_path, index=False)    
+        # Path to save the updated CSV file
+        df.to_csv(output_csv_file_path, index=False)
+    except Exception as e:
+        print(f"Error while executing add_new_columns_to_csv() function: {e}")   
 
 def check_column_exists(file_path, column_name):
     try:
@@ -171,7 +177,7 @@ def read_csv_data(file_path):
             for row in reader:
                 data.append((row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10]))  # Assuming 4 columns in the CSV
     except Exception as e:
-        print(f"Error reading CSV file: {e}")
+        print(f"Error executing read_csv_data() function: {e}")
     return data
 
 def log_start_end_time(repository_name, start_time, end_time, total_time, log_file):
@@ -184,9 +190,12 @@ def log_start_end_time(repository_name, start_time, end_time, total_time, log_fi
         total_time (timedelta): The total time taken for the process.
         log_file (str): The path to the log file.
     """
-    log_message = f"{repository_name} | {start_time} | {end_time} | {total_time} |"
-    with open(log_file, "a") as f:
-        f.write(log_message + "\n")
+    try:
+        log_message = f"{repository_name} | {start_time} | {end_time} | {total_time} |"
+        with open(log_file, "a") as f:
+            f.write(log_message + "\n")
+    except Exception as e:
+        print(f"Error while executing function log_start_end_time():", {e})
 
 def log_processing(repository_name, status, log_file):
     """
@@ -195,10 +204,13 @@ def log_processing(repository_name, status, log_file):
         repository_name (str): The name of the repository.
         status (str): The processing status.
         log_file (str): The path to the log file.
-    """    
-    log_message = f"{repository_name} | {status}"
-    with open(log_file, "a") as f:
-        f.write(log_message + "\n")
+    """
+    try:    
+        log_message = f"{repository_name} | {status}"
+        with open(log_file, "a") as f:
+            f.write(log_message + "\n")
+    except Exception as e:
+        print(f"Error while executing log_processing() function: {e}") 
 
 def download_zip_archive(repository_url, repository_path, token):
     """
@@ -212,32 +224,40 @@ def download_zip_archive(repository_url, repository_path, token):
         bool: True if download is successful, False otherwise.
     """
     #print(f"Inside **download_zip_archive**'.")
-    headers = {'Authorization': f'token {token}'}
-    response = requests.get(repository_url, headers=headers)
-    
-    if response.status_code == 200:
-        with open(repository_path, 'wb') as f:
-            f.write(response.content)
-        return True
-    else:
-        return False
-    
+    try:
+        headers = {'Authorization': f'token {token}'}
+        response = requests.get(repository_url, headers=headers)
+        reason = None
+        
+        if response.status_code == 200:
+            with open(repository_path, 'wb') as f:
+                f.write(response.content)
+            return True, reason
+        else:
+            reason = str(response.status_code) +' '+ str(response.reason)
+            return False, reason
+    except Exception as e:
+        print(f"Error while executing download_zip_archive() function: {e}")
+  
 def update_download_status(csv_file, repo_id, download_status):
-    # Read the CSV file
-    with open(csv_file, 'r', newline='', encoding='latin-1') as file:
-        reader = csv.DictReader(file)
-        rows = list(reader)
-    
-    # Modify the data in the specified column
-    for row in rows:
-        if row['id']==repo_id:
-            row['Download_Status'] = download_status
-    
-    # Write the updated data back to the CSV file
-    with open(csv_file, 'w', newline='', encoding='latin-1') as file:
-        writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
+    try:
+        # Read the CSV file
+        with open(csv_file, 'r', newline='', encoding='latin-1') as file:
+            reader = csv.DictReader(file)
+            rows = list(reader)
+        
+        # Modify the data in the specified column
+        for row in rows:
+            if row['id']==repo_id:
+                row['Download_Status'] = download_status
+        
+        # Write the updated data back to the CSV file
+        with open(csv_file, 'w', newline='', encoding='latin-1') as file:
+            writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+    except Exception as e:
+        print(f"Error while executing update_download_status() function: {e}")
 
 def download_and_save_code(application_name, download_status, repository_url, server_location, token, start_end_log_file, processing_log_file, output_csv_file_path, repo_id):
     """
@@ -250,100 +270,110 @@ def download_and_save_code(application_name, download_status, repository_url, se
         start_end_log_file (str): The path to the log file for start and end times.
         processing_log_file (str): The path to the log file for processing status.
     """
-    #print(f"Inside **Download-And-Save**'.")
-    application_name_directory = os.path.join(server_location, application_name)
-        # Check if the 'Output' folder exists, if not, create it
-    if not os.path.exists(application_name_directory):
-        os.makedirs(application_name_directory)
-    else:
-        dir_to_delete = application_name_directory
-        command = f'rmdir /s /q "{dir_to_delete}"'
-        os.system(command)
-        os.makedirs(application_name_directory)
-    
-    repository_zip_path = os.path.join(application_name_directory, application_name + '.zip')
-    #print(f"repository_zip_path '{repository_zip_path}'.")
-    if os.path.exists(repository_zip_path):
-        log_processing(application_name, "Skipped: ZIP file already exists", processing_log_file)
-        print(f"Skipping repository '{application_name}'. ZIP file already exists.\n")
+    try:
+        #print(f"Inside **Download-And-Save**'.")
+        application_name_directory = os.path.join(server_location, application_name)
+            # Check if the 'Output' folder exists, if not, create it
+        if not os.path.exists(application_name_directory):
+            os.makedirs(application_name_directory)
+        else:
+            dir_to_delete = application_name_directory
+            command = f'rmdir /s /q "{dir_to_delete}"'
+            os.system(command)
+            os.makedirs(application_name_directory)
         
-    else:
-        start_time = datetime.datetime.now()
-        try:
-            if download_zip_archive(repository_url, repository_zip_path, token):
-                with zipfile.ZipFile(repository_zip_path, 'r') as zip_ref:
-                    file_list = zip_ref.namelist()
-                    if not file_list:
-                        log_processing(application_name, "Repo is empty", processing_log_file)
-                        print(f"Repository '{application_name}' is empty.\n")
-                    else:
-                        end_time = datetime.datetime.now()
-                        total_time = end_time - start_time
-                        log_start_end_time(application_name, start_time, end_time, total_time, start_end_log_file)
-                        log_processing(application_name, "Successful", processing_log_file)
-                        print(f"Repository '{application_name}' downloaded successfully as ZIP file to '{repository_zip_path}'.\n")
-                        download_status = 'Success'
-                        update_download_status(output_csv_file_path, repo_id, download_status)
+        repository_zip_path = os.path.join(application_name_directory, application_name + '.zip')
+        #print(f"repository_zip_path '{repository_zip_path}'.")
+        if os.path.exists(repository_zip_path):
+            log_processing(application_name, "Skipped: ZIP file already exists", processing_log_file)
+            print(f"Skipping repository '{application_name}'. ZIP file already exists.\n")
+            
+        else:
+            start_time = datetime.datetime.now()
+            try:
+                download_flag, reason = download_zip_archive(repository_url, repository_zip_path, token)
+                if download_flag:
+                    with zipfile.ZipFile(repository_zip_path, 'r') as zip_ref:
+                        file_list = zip_ref.namelist()
+                        if not file_list:
+                            log_processing(application_name, "Repo is empty", processing_log_file)
+                            print(f"Repository '{application_name}' is empty.\n")
+                        else:
+                            end_time = datetime.datetime.now()
+                            total_time = end_time - start_time
+                            log_start_end_time(application_name, start_time, end_time, total_time, start_end_log_file)
+                            log_processing(application_name, "Successful", processing_log_file)
+                            print(f"Repository '{application_name}' downloaded successfully as ZIP file to '{repository_zip_path}'.\n")
+                            download_status = 'Success'
+                            update_download_status(output_csv_file_path, repo_id, download_status)
 
-            else:
+                else:
+                    end_time = datetime.datetime.now()
+                    total_time = end_time - start_time
+                    log_start_end_time(application_name, start_time, end_time, total_time, start_end_log_file)
+                    log_processing(application_name, "Failed - "+reason, processing_log_file)
+                    print(f"Failed to download repository '{application_name}', Because of the reason - {reason}.\n")
+                    download_status = f'Failed - {reason}'
+                    update_download_status(output_csv_file_path, repo_id, download_status)
+            except Exception as e:
                 end_time = datetime.datetime.now()
                 total_time = end_time - start_time
                 log_start_end_time(application_name, start_time, end_time, total_time, start_end_log_file)
-                log_processing(application_name, "Failed", processing_log_file)
-                print(f"Failed to download repository '{application_name}'.\n")
-                download_status = 'Failed'
-                update_download_status(output_csv_file_path, repo_id, download_status)
-        except Exception as e:
-            end_time = datetime.datetime.now()
-            total_time = end_time - start_time
-            log_start_end_time(application_name, start_time, end_time, total_time, start_end_log_file)
-            log_processing(application_name, f"Failed: {e}", processing_log_file)
-            print(f"Error downloading repository: {e}")
+                log_processing(application_name, f"Failed: {e}", processing_log_file)
+                print(f"Error downloading repository: {e}")
+    except Exception as e:
+        print(f"Error while executing download_and_save_code() function: {e}")
 
 def download_in_batch(batch, thread_id, src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path):
-    # thread_log_file = f"Repos_download_thread_{thread_id}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
-    # logging.basicConfig(filename=thread_log_file, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    # logging.info(f'Thread {thread_id} started.\n')
-    print(f'Thread {thread_id} started.\n')
+    try:
+        # thread_log_file = f"Repos_download_thread_{thread_id}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
+        # logging.basicConfig(filename=thread_log_file, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+        # logging.info(f'Thread {thread_id} started.\n')
+        print(f'Thread {thread_id} started.\n')
 
-    start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # logging.info(f'Thread {thread_id} start time: {start_time}\n')
-    print(f'Thread {thread_id} start time: {start_time}\n')
-    # logging.info(f'Thread {thread_id} processing repos: {batch}\n')
-    # print(f'Thread {thread_id} processing repos: {batch}')
+        start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # logging.info(f'Thread {thread_id} start time: {start_time}\n')
+        print(f'Thread {thread_id} start time: {start_time}\n')
+        # logging.info(f'Thread {thread_id} processing repos: {batch}\n')
+        # print(f'Thread {thread_id} processing repos: {batch}')
 
-    for repository in batch:
-        if repository[9] == 'Y':
-            download_and_save_code(repository[1], repository[10], repository[8], src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path, repository[0])
-        else:
-            print(f"User Marked Download='N' Hence Skipping the Download of Repo -> '{repository[1]}'\n")
+        for repository in batch:
+            if repository[9] == 'Y':
+                download_and_save_code(repository[1], repository[10], repository[8], src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path, repository[0])
+            else:
+                print(f"User Marked Download='N' Hence Skipping the Download of Repo -> '{repository[1]}'\n")
 
-    end_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # logging.info(f'Thread {thread_id} end time: {end_time}\n')
-    print(f'Thread {thread_id} end time: {end_time}\n')
-    # logging.info(f'Thread {thread_id} finished.\n')
-    print(f'Thread {thread_id} finished.\n')
+        end_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # logging.info(f'Thread {thread_id} end time: {end_time}\n')
+        print(f'Thread {thread_id} end time: {end_time}\n')
+        # logging.info(f'Thread {thread_id} finished.\n')
+        print(f'Thread {thread_id} finished.\n')
+    except Exception as e:
+        print(f"Error while executing download_in_batch() function: {e}")
 
 def find_long_paths(parent_folder, max_length=260):
-    long_paths = []
+    try:
+        long_paths = []
 
-    applications = []
-    for app_name in os.listdir(parent_folder):
-        if os.path.isdir(os.path.join(parent_folder, app_name)):
-            app_path = os.path.join(parent_folder, app_name)
-            applications.append((app_name, app_path))
-    # print(applications)
+        applications = []
+        for app_name in os.listdir(parent_folder):
+            if os.path.isdir(os.path.join(parent_folder, app_name)):
+                app_path = os.path.join(parent_folder, app_name)
+                applications.append((app_name, app_path))
+        # print(applications)
 
-    for app_name, app_path in applications:
-        # Walk through the directory tree
-        for root, dirs, files in os.walk(app_path):
-            for file in files:
-                # Construct the full path of the file
-                file_path = os.path.join(root, file)
-                # Check if the path length exceeds the limit
-                if len(file_path) > max_length:
-                    long_paths.append((app_name,file_path))
-    return long_paths
+        for app_name, app_path in applications:
+            # Walk through the directory tree
+            for root, dirs, files in os.walk(app_path):
+                for file in files:
+                    # Construct the full path of the file
+                    file_path = os.path.join(root, file)
+                    # Check if the path length exceeds the limit
+                    if len(file_path) > max_length:
+                        long_paths.append((app_name,file_path))
+        return long_paths
+    except Exception as e:
+        print(f"Error while executing find_long_paths() function: {e}")
 
 def main():
     while True:
@@ -607,7 +637,6 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
 
     else:
         print("Invalid choice.")
-
 
 if __name__ == "__main__":
     try:    
