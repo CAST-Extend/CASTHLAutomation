@@ -12,6 +12,7 @@ import UnzipFile
 import AppRepoMapping
 import HLScanAndOnboard
 import logging
+from pathlib import Path
 
 
 def get_all_repo_metadata(org_name, access_token, output_file_path, log_file_path):
@@ -239,10 +240,10 @@ def download_zip_archive(repository_url, repository_path, token):
     except Exception as e:
         print(f"Error while executing download_zip_archive() function: {e}")
   
-def update_download_status(csv_file, repo_id, download_status):
+def update_download_status(repo_id, download_status, output_csv_file_path_batch):
     try:
         # Read the CSV file
-        with open(csv_file, 'r', newline='', encoding='latin-1') as file:
+        with open(output_csv_file_path_batch, 'r', newline='', encoding='latin-1') as file:
             reader = csv.DictReader(file)
             rows = list(reader)
         
@@ -252,14 +253,41 @@ def update_download_status(csv_file, repo_id, download_status):
                 row['Download_Status'] = download_status
         
         # Write the updated data back to the CSV file
-        with open(csv_file, 'w', newline='', encoding='latin-1') as file:
+        with open(output_csv_file_path_batch, 'w', newline='', encoding='latin-1') as file:
             writer = csv.DictWriter(file, fieldnames=reader.fieldnames)
             writer.writeheader()
             writer.writerows(rows)
     except Exception as e:
         print(f"Error while executing update_download_status() function: {e}")
 
-def download_and_save_code(application_name, download_status, repository_url, server_location, token, start_end_log_file, processing_log_file, output_csv_file_path, repo_id):
+def split_csv_based_on_batch_num(batch_num, output_csv_file_path, output_csv_file_path_batch):
+    try:
+
+        df = pd.read_csv(output_csv_file_path)
+
+        batch_df = df[df['batch_number'] == batch_num]
+        batch_df.to_csv(output_csv_file_path_batch, index=False)
+
+        print(f"{output_csv_file_path_batch} file created:")
+
+    except Exception as e:
+        print(f"Error while executing split_csv_based_on_batch_num() function: {e}")
+
+def combine_all_batch_csv_files(output_csv_file_path_batch, output_csv_file_path):
+    try:
+        # List all CSV files in the input directory
+        csv_files = [os.path.join(output_csv_file_path_batch, file) for file in os.listdir(output_csv_file_path_batch) if file.endswith('.csv')]
+        # Combine all CSV files into one DataFrame
+        combined_df = pd.concat([pd.read_csv(f) for f in csv_files])
+        # Save the combined DataFrame to a CSV file
+        combined_df.to_csv(output_csv_file_path, index=False)
+        print(f"Combined CSV saved to {output_csv_file_path}")
+
+    except Exception as e:
+        print(f"Error while executing combine_all_batch_csv_files() function: {e}")
+
+
+def download_and_save_code(application_name, download_status, repository_url, server_location, token, start_end_log_file, processing_log_file, output_csv_file_path, repo_id, output_csv_file_path_batch):
     """
     Downloads and saves code from a repository.
     Parameters:
@@ -305,7 +333,7 @@ def download_and_save_code(application_name, download_status, repository_url, se
                             log_processing(application_name, "Successful", processing_log_file)
                             print(f"Repository '{application_name}' downloaded successfully as ZIP file to '{repository_zip_path}'.\n")
                             download_status = 'Success'
-                            update_download_status(output_csv_file_path, repo_id, download_status)
+                            update_download_status(repo_id, download_status, output_csv_file_path_batch)
 
                 else:
                     end_time = datetime.datetime.now()
@@ -314,7 +342,8 @@ def download_and_save_code(application_name, download_status, repository_url, se
                     log_processing(application_name, "Failed - "+reason, processing_log_file)
                     print(f"Failed to download repository '{application_name}', Because of the reason - {reason}.\n")
                     download_status = f'Failed - {reason}'
-                    update_download_status(output_csv_file_path, repo_id, download_status)
+                    update_download_status(repo_id, download_status, output_csv_file_path_batch)
+
             except Exception as e:
                 end_time = datetime.datetime.now()
                 total_time = end_time - start_time
@@ -324,7 +353,7 @@ def download_and_save_code(application_name, download_status, repository_url, se
     except Exception as e:
         print(f"Error while executing download_and_save_code() function: {e}")
 
-def download_in_batch(batch, thread_id, src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path):
+def download_in_batch(batch, thread_id, src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path, output_csv_file_path_batch):
     try:
         # thread_log_file = f"Repos_download_thread_{thread_id}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
         # logging.basicConfig(filename=thread_log_file, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -339,7 +368,7 @@ def download_in_batch(batch, thread_id, src_dir, token, start_end_log_file, proc
 
         for repository in batch:
             if repository[9] == 'Y':
-                download_and_save_code(repository[1], repository[10], repository[8], src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path, repository[0])
+                download_and_save_code(repository[1], repository[10], repository[8], src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path, repository[0], output_csv_file_path_batch)
             else:
                 print(f"User Marked Download='N' Hence Skipping the Download of Repo -> '{repository[1]}'\n")
 
@@ -476,9 +505,29 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
             batches.append(batch)
         # Process batches using multi-threading
         threads = []
+        # Define the directory name
+        directory = Path(output_dir+"\csv_for_each_batch")
+        # Create the directory
+        directory.mkdir(parents=True, exist_ok=True)
+        print(f"Directory '{directory}' created successfully.")
+
+        if os.path.exists(directory):
+            # List all files in the directory
+            files_in_directory = os.listdir(directory)
+            # Loop through the files and delete each one
+            for file in files_in_directory:
+                file_path = os.path.join(directory, file)
+                # Check if it's a file and delete it
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                    print(f"Deleted file: {file_path}")
+        
         for i, batch in enumerate(batches, start=1):
             start_end_log_file = os.path.join(logs_dir, f"RepoDownloadTime_batch_{i}_{current_datetime}.txt")
             processing_log_file = os.path.join(logs_dir, f"RepoDownloadStatusLog_batch_{i}_{current_datetime}.txt")
+            output_csv_file_path_batch = os.path.join(directory, f"{org_name}_Repositories_Summary_batch_{i}.csv")
+            split_csv_based_on_batch_num(i, output_csv_file_path, output_csv_file_path_batch)
+
             if not os.path.exists(start_end_log_file):
                 with open(start_end_log_file, "w") as start_end_log:
                     start_end_log.write("Start Time\tEnd Time\tTotal Time Taken\n")            
@@ -487,14 +536,16 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
                     processing_log.write("Timestamp\tMessage\n")
             open(start_end_log_file, 'w').close()
             open(processing_log_file, 'w').close()
-            thread = threading.Thread(target=download_in_batch, args=(batch, i, src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path))
+            thread = threading.Thread(target=download_in_batch, args=(batch, i, src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path, output_csv_file_path_batch))
             threads.append(thread)
         # Start threads
         for t in threads:
             t.start()
         # Join threads to the main thread
         for t in threads:
-            t.join()       
+            t.join()
+
+        combine_all_batch_csv_files(directory, output_csv_file_path)       
 
     elif output_type == 3:
         try:
@@ -575,9 +626,29 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
             batches.append(batch)
         # Process batches using multi-threading
         threads = []
+        # Define the directory name
+        directory = Path(output_dir+"\csv_for_each_batch")
+        # Create the directory
+        directory.mkdir(parents=True, exist_ok=True)
+        print(f"Directory '{directory}' created successfully.")
+
+        if os.path.exists(directory):
+            # List all files in the directory
+            files_in_directory = os.listdir(directory)
+            # Loop through the files and delete each one
+            for file in files_in_directory:
+                file_path = os.path.join(directory, file)
+                # Check if it's a file and delete it
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                    print(f"Deleted file: {file_path}")
+        
         for i, batch in enumerate(batches, start=1):
             start_end_log_file = os.path.join(logs_dir, f"RepoDownloadTime_batch_{i}_{current_datetime}.txt")
             processing_log_file = os.path.join(logs_dir, f"RepoDownloadStatusLog_batch_{i}_{current_datetime}.txt")
+            output_csv_file_path_batch = os.path.join(directory, f"{org_name}_Repositories_Summary_batch_{i}.csv")
+            split_csv_based_on_batch_num(i, output_csv_file_path, output_csv_file_path_batch)
+
             if not os.path.exists(start_end_log_file):
                 with open(start_end_log_file, "w") as start_end_log:
                     start_end_log.write("Start Time\tEnd Time\tTotal Time Taken\n")            
@@ -586,7 +657,7 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
                     processing_log.write("Timestamp\tMessage\n")
             open(start_end_log_file, 'w').close()
             open(processing_log_file, 'w').close()
-            thread = threading.Thread(target=download_in_batch, args=(batch, i, src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path))
+            thread = threading.Thread(target=download_in_batch, args=(batch, i, src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path, output_csv_file_path_batch))
             threads.append(thread)
         # Start threads
         for t in threads:
@@ -594,6 +665,8 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
         # Join threads to the main thread
         for t in threads:
             t.join()
+
+        combine_all_batch_csv_files(directory, output_csv_file_path)   
 
         # 3. Unzip the downloaded source code
         try:
