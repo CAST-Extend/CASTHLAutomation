@@ -76,7 +76,7 @@ def json_to_csv(json_filename, csv_filename):
             json_data = json.load(json_file)
               
         # Add additional headers
-        headers = ['id', 'name', 'default_branch', 'size', 'updated_at', 'clone_url','archive_url', 'batch_number']
+        headers = ['id', 'name', 'default_branch', 'size', 'created_at', 'updated_at', 'pushed_at','clone_url','archive_url', 'batch_number']
         #headers.extend(additional_headers)
         
         # Write to CSV
@@ -131,13 +131,36 @@ def add_new_columns_to_csv(output_csv_file_path):
         df = pd.read_csv(output_csv_file_path, encoding='latin-1')
 
         # Add two new columns with some default values or calculations
-        df['Download'] = 'Y'  # You can also use a calculation or other values
+        df['Download'] = 'N'  # You can also use a calculation or other values
         df['Download_Status'] = ''
 
         # Path to save the updated CSV file
         df.to_csv(output_csv_file_path, index=False)
     except Exception as e:
         print(f"Error while executing add_new_columns_to_csv() function: {e}")   
+
+def update_download_column(output_csv_file_path, last_refresh_date):
+    try:
+        # Load your CSV file
+        df = pd.read_csv(output_csv_file_path, encoding='latin-1')
+
+        # Convert pushed_at to datetime (handles ISO format with Z)
+        df['pushed_at'] = pd.to_datetime(df['pushed_at'], utc=True, errors='coerce')
+
+        # Clean and parse last_refresh_date string
+        last_refresh_date = datetime.datetime.strptime(
+            last_refresh_date.strip('"'), '%Y-%m-%d'
+        ).replace(tzinfo=datetime.timezone.utc)
+
+        # Compare and update 'Download' column
+        df['Download'] = df['pushed_at'].apply(lambda x: 'Y' if pd.notna(x) and x > last_refresh_date else 'N')
+
+        # Save updated CSV
+        df.to_csv(output_csv_file_path, index=False)
+
+        print("Download column updated based on pushed_at.")
+    except Exception as e:
+        print(f"Error while executing update_download_column(): {e}")
 
 def check_column_exists(file_path, column_name):
     try:
@@ -422,6 +445,7 @@ def main():
         output_dir = config.get('Directories', 'output_dir')
         App_Repo_Mapping = config.get('Input-File', 'App_Repo_Mapping')
         src_dir_analyze = config.get('Directories', 'src_dir_analyze')
+        last_refresh_date = config.get('GitHub', 'last_refresh_date')
 
         # Check if the 'Source Dir' folder exists, if not, create it
         if not os.path.exists(src_dir):
@@ -460,14 +484,14 @@ def main():
                 continue
 
             output_type = int(choice)
-            main_operations(output_type, current_datetime, org_name, token, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, src_dir_analyze)
+            main_operations(output_type, current_datetime, org_name, token, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, src_dir_analyze, last_refresh_date)
 
             # Ask user if they want to continue
             continue_option = input("Do you want to run another query? (yes/no): ")
             if continue_option.lower() != 'yes':
                 exit(0)
 
-def main_operations(output_type, current_datetime, org_name, token, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, src_dir_analyze):
+def main_operations(output_type, current_datetime, org_name, token, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, src_dir_analyze, last_refresh_date):
     if output_type == 1:
         output_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Metadata.json")
         log_file_path = os.path.join(logs_dir, f"{org_name}_Metadatadownload_{current_datetime}.log")
@@ -476,6 +500,7 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
         json_to_csv(output_file_path, output_csv_file_path)
         modify_archive_urls(output_csv_file_path)
         add_new_columns_to_csv(output_csv_file_path)
+        update_download_column(output_csv_file_path, last_refresh_date)
         print(f"Refer Log file {log_file_path} for download log and time to download Metadata.")
         print(f"CSV file generated {output_csv_file_path} with summary of repositories which can be used for downloading source code(Task-2).\n")
 
@@ -597,6 +622,7 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
         json_to_csv(output_file_path, output_csv_file_path)
         modify_archive_urls(output_csv_file_path)
         add_new_columns_to_csv(output_csv_file_path)
+        update_download_column(output_csv_file_path, last_refresh_date)
         print(f"Refer Log file {log_file_path} for download log and time to download Metadata.")
         print(f"CSV file generated {output_csv_file_path} with summary of repositories which can be used for downloading source code(Task-2).\n")
 
