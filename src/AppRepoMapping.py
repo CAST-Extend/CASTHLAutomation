@@ -83,7 +83,7 @@ def move_and_delete_folders(root_dir, logger):
                             # Move the entire directory to its parent directory
                             if source_dir != root_dir:  # Skip root_dir itself
                                 shutil.move(source_dir, destination_dir)
-                                logger.info(f"Directory '{source_dir}' moved to '{destination_dir}'.")
+                                # logger.info(f"Directory '{source_dir}' moved to '{destination_dir}'.")
                                 processed_dirs.add(source_dir)  # Add the directory to processed_dirs
                                 # Delete the directory after successful move
                                 os.rmdir(source_dir)
@@ -107,6 +107,7 @@ def create_application_folders(mapping_sheet, repo_folder, output_folder, logger
         for index, row in mapping_df.iterrows():
             repo_name = str(row['Repository']).strip()
             app_name = str(row['Application']).strip()
+            action = str(row['Action']).strip()
 
             # Check if app_name is NaN
             if pd.isna(app_name):
@@ -125,23 +126,36 @@ def create_application_folders(mapping_sheet, repo_folder, output_folder, logger
                 os.makedirs(app_folder_path)
                 logger.info(f"Application folder '{app_name}' created.\n")
 
-            if os.path.exists(repo_folder+'\\'+repo_name): 
+            if action.lower() == "deleted":
                 if os.path.exists(app_folder_path+'\\'+repo_name): 
                     dir_to_delete = app_folder_path+'\\'+repo_name
                     command = f'rmdir /s /q "{dir_to_delete}"'
                     os.system(command)
-            
-            # Move entire directory from repo to application folder
-            repo_folder_path = os.path.join(repo_folder, repo_name)
-            
-            if os.path.exists(repo_folder_path) and os.path.isdir(repo_folder_path):
-                shutil.move(repo_folder_path, app_folder_path)
-                logger.info(f"Repository '{repo_name}' moved to application folder '{app_name}' with its contents.\n")
-                summary_logger.info(f"{app_name};{repo_name};Passed")
-                # Call the function to move and delete folders in the app folder
-                move_and_delete_folders(app_folder_path, logger)
-            else:
-                logger.warning(f"Repository '{repo_name}' does not exist for application '{app_name}'.\n")
-                summary_logger.info(f"{app_name};{repo_name};Failed")
+                    logger.info(f"Repository '{repo_name}' is deleted from application folder '{app_name}'.\n")
+
+            if action.lower() == "skipped":
+                logger.info(f"Repository '{repo_name}' is skipped.\n")
+
+            if action.lower() == "replaced":
+                # Move entire directory from repo to application folder
+                repo_folder_path = os.path.join(repo_folder, repo_name)
+                
+                if os.path.exists(repo_folder_path) and os.path.isdir(repo_folder_path):
+
+                    dir_to_delete = app_folder_path+'\\'+repo_name
+                    if os.path.exists(dir_to_delete):
+                        command = f'rmdir /s /q "{dir_to_delete}"'
+                        os.system(command)
+
+                    shutil.move(repo_folder_path, app_folder_path)
+                    logger.info(f"Repository '{repo_name}' is replaced with its contents.\n")
+
+                    summary_logger.info(f"{app_name};{repo_name};Passed")
+                    # Call the function to move and delete folders in the app folder
+                    move_and_delete_folders(app_folder_path, logger)
+                else:
+                    logger.warning(f"Repository '{repo_name}' does not exist for application '{app_name}'.\n")
+                    summary_logger.info(f"{app_name};{repo_name};Failed")
+                
     except Exception as e:
         print(f"Error while executing create_application_folders() function: {e}")
