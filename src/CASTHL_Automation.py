@@ -145,22 +145,49 @@ def update_download_column(output_csv_file_path, last_refresh_date):
         df = pd.read_csv(output_csv_file_path, encoding='latin-1')
 
         # Convert pushed_at to datetime (handles ISO format with Z)
-        df['pushed_at'] = pd.to_datetime(df['pushed_at'], utc=True, errors='coerce')
+        df['pushed_at'] = pd.to_datetime(df['pushed_at'], utc=True)
 
         # Clean and parse last_refresh_date string
-        last_refresh_date = datetime.datetime.strptime(
-            last_refresh_date.strip('"'), '%Y-%m-%d'
-        ).replace(tzinfo=datetime.timezone.utc)
+        last_refresh_date = datetime.datetime.strptime(last_refresh_date.strip('"'), '%Y-%m-%d').replace(tzinfo=datetime.timezone.utc)
 
         # Compare and update 'Download' column
-        df['Download'] = df['pushed_at'].apply(lambda x: 'Y' if pd.notna(x) and x > last_refresh_date else 'N')
+        df['Download'] = df['pushed_at'].apply(lambda x: 'Y' if x > last_refresh_date else 'N')
 
         # Save updated CSV
         df.to_csv(output_csv_file_path, index=False)
 
-        print("Download column updated based on pushed_at.")
+        print("Download column updated based on pushed_at date.")
     except Exception as e:
         print(f"Error while executing update_download_column(): {e}")
+
+def add_action_column(mapping_excel_path, repo_summary_csv_path):
+    try:
+        # Load Excel and CSV files
+        df_mapping = pd.read_excel(mapping_excel_path)
+        df_summary = pd.read_csv(repo_summary_csv_path)
+
+        # Normalize values for matching
+        df_mapping['Repository'] = df_mapping['Repository'].str.strip()
+        df_summary['name'] = df_summary['name'].str.strip()
+
+        # Build dictionary for lookup: repo name -> Download status
+        repo_download_map = df_summary.set_index('name')['Download'].to_dict()
+
+        # Determine Action
+        def get_action(repo):
+            if repo in repo_download_map:
+                return 'Replaced' if repo_download_map[repo] == 'Y' else 'Skipped'
+            return 'Deleted'
+
+        # Apply and update Action column
+        df_mapping['Action'] = df_mapping['Repository'].apply(get_action)
+
+        # Overwrite the same Excel file
+        df_mapping.to_excel(mapping_excel_path, index=False)
+        print(f"Updated Action column in Excel file: {mapping_excel_path}\n")
+
+    except Exception as e:
+        print(f"Error while executing add_action_column() function: {e}")   
 
 def check_column_exists(file_path, column_name):
     try:
@@ -199,7 +226,7 @@ def read_csv_data(file_path):
             reader = csv.reader(file)
             next(reader)  # Skip the header row
             for row in reader:
-                data.append((row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10]))  # Assuming 4 columns in the CSV
+                data.append((row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11], row[12]))  # Assuming 4 columns in the CSV
     except Exception as e:
         print(f"Error executing read_csv_data() function: {e}")
     return data
@@ -390,8 +417,8 @@ def download_in_batch(batch, thread_id, src_dir, token, start_end_log_file, proc
         # print(f'Thread {thread_id} processing repos: {batch}')
 
         for repository in batch:
-            if repository[9] == 'Y':
-                download_and_save_code(repository[1], repository[10], repository[8], src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path, repository[0], output_csv_file_path_batch)
+            if repository[11] == 'Y':
+                download_and_save_code(repository[1], repository[12], repository[10], src_dir, token, start_end_log_file, processing_log_file, output_csv_file_path, repository[0], output_csv_file_path_batch)
             else:
                 print(f"User Marked Download='N' Hence Skipping the Download of Repo -> '{repository[1]}'\n")
 
@@ -439,6 +466,7 @@ def main():
         # Get values from the config file
         org_name = config.get('GitHub', 'github_org_name')
         token = config.get('GitHub', 'github_token')
+        config_dir = config.get('Directories', 'config_dir')
         src_dir = config.get('Directories', 'src_dir')
         unzip_dir = config.get('Directories', 'unzip_dir')
         logs_dir = config.get('Directories', 'logs_dir')
@@ -484,14 +512,14 @@ def main():
                 continue
 
             output_type = int(choice)
-            main_operations(output_type, current_datetime, org_name, token, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, src_dir_analyze, last_refresh_date)
+            main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, src_dir_analyze, last_refresh_date)
 
             # Ask user if they want to continue
             continue_option = input("Do you want to run another query? (yes/no): ")
             if continue_option.lower() != 'yes':
                 exit(0)
 
-def main_operations(output_type, current_datetime, org_name, token, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, src_dir_analyze, last_refresh_date):
+def main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, src_dir_analyze, last_refresh_date):
     if output_type == 1:
         output_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Metadata.json")
         log_file_path = os.path.join(logs_dir, f"{org_name}_Metadatadownload_{current_datetime}.log")
@@ -520,12 +548,13 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
             return
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
         data = read_csv_data(output_csv_file_path) 
+        # print(data[0])
         batches = []
-        num_of_batches = int(data[-1][7])
+        num_of_batches = int(data[-1][9])
         for i in range(num_of_batches):
             batch = []
             for repository in data:
-                if int(repository[7]) == i+1:
+                if int(repository[9]) == i+1:
                     batch.append(repository)
             batches.append(batch)
         # Process batches using multi-threading
@@ -583,9 +612,12 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
         logger = AppRepoMapping.setup_logger(log_file)
         summary_log_file = os.path.join(logs_dir, f"AppRepoMappingSummary_log_{current_datetime}.txt")
         summary_logger = AppRepoMapping.create_summary_logger(summary_log_file)
+        output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
         if not os.path.exists(App_Repo_Mapping):
             print("Application to repository mapping information is missing, please refer README.md to create the mapping spreadsheet.")
             return
+        mapping_excel_path = os.path.join(config_dir, f"App-Repo-Mapping.xlsx")
+        add_action_column(mapping_excel_path, output_csv_file_path)
         AppRepoMapping.create_application_folders(App_Repo_Mapping, unzip_dir, src_dir_analyze, logger, summary_logger)
 
     elif output_type == 5:
@@ -618,11 +650,13 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
         output_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Metadata.json")
         log_file_path = os.path.join(logs_dir, f"{org_name}_Metadatadownload_{current_datetime}.log")
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
+        mapping_excel_path = os.path.join(config_dir, f"App-Repo-Mapping.xlsx")
         get_all_repo_metadata(org_name, token, output_file_path, log_file_path)
         json_to_csv(output_file_path, output_csv_file_path)
         modify_archive_urls(output_csv_file_path)
         add_new_columns_to_csv(output_csv_file_path)
         update_download_column(output_csv_file_path, last_refresh_date)
+        add_action_column(mapping_excel_path, output_csv_file_path)
         print(f"Refer Log file {log_file_path} for download log and time to download Metadata.")
         print(f"CSV file generated {output_csv_file_path} with summary of repositories which can be used for downloading source code(Task-2).\n")
 
@@ -643,11 +677,11 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
         data = read_csv_data(output_csv_file_path) 
         batches = []
-        num_of_batches = int(data[-1][7])
+        num_of_batches = int(data[-1][9])
         for i in range(num_of_batches):
             batch = []
             for repository in data:
-                if int(repository[7]) == i+1:
+                if int(repository[9]) == i+1:
                     batch.append(repository)
             batches.append(batch)
         # Process batches using multi-threading
@@ -708,6 +742,8 @@ def main_operations(output_type, current_datetime, org_name, token, src_dir, unz
         if not os.path.exists(App_Repo_Mapping):
             print("Application to repository mapping information is missing, please refer README.md to create the mapping spreadsheet.")
             return
+        mapping_excel_path = os.path.join(config_dir, f"App-Repo-Mapping.xlsx")
+        add_action_column(mapping_excel_path, output_csv_file_path)
         AppRepoMapping.create_application_folders(App_Repo_Mapping, unzip_dir, src_dir_analyze, logger, summary_logger)
 
         # 5. Get applications long path
