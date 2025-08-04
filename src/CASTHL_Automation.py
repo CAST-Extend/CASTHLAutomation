@@ -1,3 +1,4 @@
+import shutil
 import threading
 import requests
 import json
@@ -430,6 +431,52 @@ def download_in_batch(batch, thread_id, src_dir, token, start_end_log_file, proc
     except Exception as e:
         print(f"Error while executing download_in_batch() function: {e}")
 
+def mainframeCopyAppend_to_analyzed(mainframe_src_folder, dest_folder, log_file_path):
+    log_messages = []
+    try:
+        src_path = Path(mainframe_src_folder)
+        dest_path = Path(dest_folder)
+ 
+        if not dest_path.exists():
+            shutil.copytree(src_path, dest_path)
+            log_message = f"{datetime.datetime.now()} - INFO - Folder copied from '{src_path}' to '{dest_path}'."
+            log_messages.append(log_message)
+            print(log_message)
+        else:
+            for item in src_path.iterdir():
+                s = item
+                d = dest_path / item.name
+                if s.is_dir():
+                    if d.exists() and d.is_dir():
+                        mainframeCopyAppend_to_analyzed(s, d, log_file_path)  # Recursively merge directories
+                    else:
+                        shutil.copytree(s, d)  # Copy directory
+                        log_message = f"{datetime.datetime.now()} - INFO - Directory '{s}' copied to '{d}'."
+                        log_messages.append(log_message)
+                        print(log_message)
+                else:
+                    if d.exists():
+                        log_message = f"{datetime.datetime.now()} - INFO - File '{d}' already exists. Skipping '{s}'."
+                        log_messages.append(log_message)
+                        print(log_message)
+                    else:
+                        shutil.copy2(s, d)  # Copy file
+                        log_message = f"{datetime.datetime.now()} - INFO - File '{s}' copied to '{d}'."
+                        log_messages.append(log_message)
+                        print(log_message)
+            log_message = f"{datetime.datetime.now()} - INFO - Contents of '{src_path}' appended to '{dest_path}'."
+            log_messages.append(log_message)
+            print(log_message)
+    except Exception as e:
+        log_message = f"{datetime.datetime.now()} - ERROR - Error while copying folder: {e}"
+        log_messages.append(log_message)
+        print(log_message)
+ 
+    # Log messages to the specified log file
+    with open(log_file_path, "a") as log_file:
+        for message in log_messages:
+            log_file.write(message + "\n")
+
 def find_long_paths(parent_folder, max_length=260):
     try:
         long_paths = []
@@ -472,6 +519,7 @@ def main():
         logs_dir = config.get('Directories', 'logs_dir')
         output_dir = config.get('Directories', 'output_dir')
         App_Repo_Mapping = config.get('Input-File', 'App_Repo_Mapping')
+        mainframe_src_folder = config.get('Directories', 'mainframe_src_folder')
         src_dir_analyze = config.get('Directories', 'src_dir_analyze')
         last_refresh_date = config.get('GitHub', 'last_refresh_date')
 
@@ -502,24 +550,25 @@ def main():
             print("2. Download source code for all repositories in the organization in batches")
             print("3. Unzip the downloaded source code")
             print("4. Create application folders and move repositories")
-            print("5. Get applications long path")
-            print("6. Trigger CAST Highlight onboarding for the source code")
-            print("7. Run all the steps in one go from 1 to 6")
-            choice = input("Enter your choice (1/2/3/4/5/6/7): ")
-            
-            if choice not in ['1', '2', '3', '4', '5', '6', '7']:
-                print("Invalid choice. Please enter 1, 2, 3, 4, 5, 6 or 7.")
+            print("5. Copy or Append Mainframe folder to analyzed directory")
+            print("6. Get applications long path")
+            print("7. Trigger CAST Highlight onboarding for the source code")
+            print("8. Run all the steps in one go from 1 to 7")
+            choice = input("Enter your choice (1/2/3/4/5/6/7/8): ")
+
+            if choice not in ['1', '2', '3', '4', '5', '6', '7', '8']:
+                print("Invalid choice. Please enter 1, 2, 3, 4, 5, 6, 7 or 8.")
                 continue
 
             output_type = int(choice)
-            main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, src_dir_analyze, last_refresh_date)
+            main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, mainframe_src_folder, src_dir_analyze, last_refresh_date)
 
             # Ask user if they want to continue
             continue_option = input("Do you want to run another query? (yes/no): ")
             if continue_option.lower() != 'yes':
                 exit(0)
 
-def main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, src_dir_analyze, last_refresh_date):
+def main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, mainframe_src_folder, src_dir_analyze, last_refresh_date):
     if output_type == 1:
         output_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Metadata.json")
         log_file_path = os.path.join(logs_dir, f"{org_name}_Metadatadownload_{current_datetime}.log")
@@ -621,6 +670,9 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
         AppRepoMapping.create_application_folders(App_Repo_Mapping, unzip_dir, src_dir_analyze, logger, summary_logger)
 
     elif output_type == 5:
+        mainframeCopyAppend_to_analyzed(mainframe_src_folder, src_dir_analyze, logs_dir + f"/mainframe_copy_append_log_{current_datetime}.log")
+
+    elif output_type == 6:
         parent_folder = src_dir_analyze
         if os.path.exists(parent_folder):
             long_paths = find_long_paths(parent_folder)
@@ -634,17 +686,17 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
                         writer.writerow([app_name, app_path])
                 print(f"Applications Long path saved to '{long_path_csv_file}'.\n")
             else:
-                print("No paths exceeding the length limit found.\n")
+                print("\n No paths exceeding the length limit found.\n")
         else:
             print("The specified parent folder does not exist.\n")
     
-    elif output_type == 6:
+    elif output_type == 7:
         try:
             HLScanAndOnboard.main()
         except Exception as e:
             logging.error(f'{e}')
     
-    elif output_type == 7:
+    elif output_type == 8:
 
         # 1. Download Metadata for GitHub organization
         output_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Metadata.json")
@@ -746,7 +798,10 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
         add_action_column(mapping_excel_path, output_csv_file_path)
         AppRepoMapping.create_application_folders(App_Repo_Mapping, unzip_dir, src_dir_analyze, logger, summary_logger)
 
-        # 5. Get applications long path
+        # 5. Copy or Append Mainframe folder to analyzed directory
+        mainframeCopyAppend_to_analyzed(mainframe_src_folder, src_dir_analyze, logs_dir + f"/mainframe_copy_append_log_{current_datetime}.log")
+
+        # 6. Get applications long path
         parent_folder = src_dir_analyze
         if os.path.exists(parent_folder):
             long_paths = find_long_paths(parent_folder)
@@ -760,11 +815,11 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
                         writer.writerow([app_name, app_path])
                 print(f"Applications Long path saved to '{long_path_csv_file}'.\n")
             else:
-                print("No paths exceeding the length limit found.\n")
+                print("\n No paths exceeding the length limit found.\n")
         else:
             print("The specified parent folder does not exist.\n")
 
-        # 6. Trigger CAST Highlight onboarding for the source code
+        # 7. Trigger CAST Highlight onboarding for the source code
         try:
             HLScanAndOnboard.main()
         except Exception as e:
