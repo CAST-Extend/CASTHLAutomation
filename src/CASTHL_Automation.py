@@ -431,46 +431,39 @@ def download_in_batch(batch, thread_id, src_dir, token, start_end_log_file, proc
     except Exception as e:
         print(f"Error while executing download_in_batch() function: {e}")
 
-def mainframeCopyAppend_to_analyzed(mainframe_src_folder, dest_folder, log_file_path):
+def mainframeCopyAppend_to_analyzed_from_csv(csv_file_path, log_file_path):
     log_messages = []
+
     try:
-        src_path = Path(mainframe_src_folder)
-        dest_path = Path(dest_folder)
- 
-        if not dest_path.exists():
-            shutil.copytree(src_path, dest_path)
-            log_message = f"{datetime.datetime.now()} - INFO - Folder copied from '{src_path}' to '{dest_path}'."
-            log_messages.append(log_message)
-            print(log_message)
-        else:
-            for item in src_path.iterdir():
-                s = item
-                d = dest_path / item.name
-                if s.is_dir():
-                    if d.exists() and d.is_dir():
-                        mainframeCopyAppend_to_analyzed(s, d, log_file_path)  # Recursively merge directories
-                    else:
-                        shutil.copytree(s, d)  # Copy directory
-                        log_message = f"{datetime.datetime.now()} - INFO - Directory '{s}' copied to '{d}'."
-                        log_messages.append(log_message)
-                        print(log_message)
-                else:
-                    if d.exists():
-                        log_message = f"{datetime.datetime.now()} - INFO - File '{d}' already exists. Skipping '{s}'."
-                        log_messages.append(log_message)
-                        print(log_message)
-                    else:
-                        shutil.copy2(s, d)  # Copy file
-                        log_message = f"{datetime.datetime.now()} - INFO - File '{s}' copied to '{d}'."
-                        log_messages.append(log_message)
-                        print(log_message)
-            log_message = f"{datetime.datetime.now()} - INFO - Contents of '{src_path}' appended to '{dest_path}'."
-            log_messages.append(log_message)
-            print(log_message)
+        df = pd.read_csv(csv_file_path)
+
+        if 'Mainframe_src_folder' not in df.columns or 'Destination_folder' not in df.columns:
+            raise ValueError("CSV must contain 'Mainframe_src_folder' and 'Destination_folder' columns.")
+
+        for index, row in df.iterrows():
+            src_folder = str(row['Mainframe_src_folder']).strip()
+            dest_folder = str(row['Destination_folder']).strip()
+
+            folder_name = os.path.basename(src_folder.rstrip("\\/"))
+            final_dest_path = os.path.join(dest_folder, folder_name)
+
+            log_messages.append(f"{datetime.datetime.now()} - INFO - Copying: {src_folder} --> {final_dest_path}")
+
+            if not os.path.exists(src_folder):
+                log_messages.append(f"{datetime.datetime.now()} - ERROR - Source folder does not exist: {src_folder}")
+                continue
+
+            try:
+                # Create destination parent if not exists
+                os.makedirs(dest_folder, exist_ok=True)
+                # Copy the folder itself inside destination
+                shutil.copytree(src_folder, final_dest_path, dirs_exist_ok=True)
+                log_messages.append(f"{datetime.datetime.now()} - SUCCESS - Copied {src_folder} to {final_dest_path}")
+            except Exception as copy_error:
+                log_messages.append(f"{datetime.datetime.now()} - ERROR - Failed to copy folder: {copy_error}")
+
     except Exception as e:
-        log_message = f"{datetime.datetime.now()} - ERROR - Error while copying folder: {e}"
-        log_messages.append(log_message)
-        print(log_message)
+        log_messages.append(f"{datetime.datetime.now()} - CRITICAL - Failed to process CSV: {e}")
  
     # Log messages to the specified log file
     with open(log_file_path, "a") as log_file:
@@ -519,9 +512,10 @@ def main():
         logs_dir = config.get('Directories', 'logs_dir')
         output_dir = config.get('Directories', 'output_dir')
         App_Repo_Mapping = config.get('Input-File', 'App_Repo_Mapping')
-        mainframe_src_folder = config.get('Directories', 'mainframe_src_folder')
+        #mainframe_src_folder = config.get('Directories', 'mainframe_src_folder')
         src_dir_analyze = config.get('Directories', 'src_dir_analyze')
         last_refresh_date = config.get('GitHub', 'last_refresh_date')
+        csv_file_path = config.get('Input-File', 'source_destination_mapping')  # Read the CSV file path
 
         # Check if the 'Source Dir' folder exists, if not, create it
         if not os.path.exists(src_dir):
@@ -550,7 +544,7 @@ def main():
             print("2. Download source code for all repositories in the organization in batches")
             print("3. Unzip the downloaded source code")
             print("4. Create application folders and move repositories")
-            print("5. Copy or Append Mainframe folder to analyzed directory")
+            print("5. Copy Mainframe folder from src to dest")
             print("6. Get applications long path")
             print("7. Trigger CAST Highlight onboarding for the source code")
             print("8. Run all the steps in one go from 1 to 7")
@@ -561,14 +555,14 @@ def main():
                 continue
 
             output_type = int(choice)
-            main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, mainframe_src_folder, src_dir_analyze, last_refresh_date)
+            main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, csv_file_path, src_dir_analyze, last_refresh_date)
 
             # Ask user if they want to continue
             continue_option = input("Do you want to run another query? (yes/no): ")
             if continue_option.lower() != 'yes':
                 exit(0)
 
-def main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, mainframe_src_folder, src_dir_analyze, last_refresh_date):
+def main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, csv_file_path, src_dir_analyze, last_refresh_date):
     if output_type == 1:
         output_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Metadata.json")
         log_file_path = os.path.join(logs_dir, f"{org_name}_Metadatadownload_{current_datetime}.log")
@@ -669,8 +663,12 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
         add_action_column(mapping_excel_path, output_csv_file_path)
         AppRepoMapping.create_application_folders(App_Repo_Mapping, unzip_dir, src_dir_analyze, logger, summary_logger)
 
-    elif output_type == 5:
-        mainframeCopyAppend_to_analyzed(mainframe_src_folder, src_dir_analyze, logs_dir + f"/mainframe_copy_append_log_{current_datetime}.log")
+    elif output_type == 5:  # New option for copying folder
+        if not os.path.exists(csv_file_path):
+            print(f"CSV file not found at {csv_file_path}. Please check your config.")
+            return
+        log_file_path = os.path.join(logs_dir, f"MainframeCopyAppendLog_{current_datetime}.log")
+        mainframeCopyAppend_to_analyzed_from_csv(csv_file_path, log_file_path)
 
     elif output_type == 6:
         parent_folder = src_dir_analyze
@@ -799,7 +797,7 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
         AppRepoMapping.create_application_folders(App_Repo_Mapping, unzip_dir, src_dir_analyze, logger, summary_logger)
 
         # 5. Copy or Append Mainframe folder to analyzed directory
-        mainframeCopyAppend_to_analyzed(mainframe_src_folder, src_dir_analyze, logs_dir + f"/mainframe_copy_append_log_{current_datetime}.log")
+        mainframeCopyAppend_to_analyzed_from_csv(csv_file_path, os.path.join(logs_dir, f"mainframe_copy_append_log_{current_datetime}.log"))
 
         # 6. Get applications long path
         parent_folder = src_dir_analyze
