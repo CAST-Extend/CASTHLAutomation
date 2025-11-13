@@ -677,6 +677,61 @@ def match_applications(metadata_file, mapping_file, output_file, logger=None):
 
 
 
+def create_applications_hl(hl_url, logger, App_Repo_Mapping, token,highlight_company_id):
+    """
+    Read 'NewApplications' sheet from App_Repo_Mapping Excel and create applications in CAST Highlight.
+
+    Parameters:
+        hl_url (str): Base URL of CAST Highlight instance
+        logger: Logger instance
+        App_Repo_Mapping (str): Path to Excel file containing 'NewApplications' sheet
+        token (str): Bearer token for authorization
+    """
+    try:
+        # Step 1: Read NewApplications sheet
+        df_new_apps = pd.read_excel(App_Repo_Mapping, sheet_name='NewApplications')
+        logger.info(f"Loaded {len(df_new_apps)} new applications from New Applications List.")
+
+        # Step 2: Loop through each row and create application
+        for index, row in df_new_apps.iterrows():
+            app_name = str(row['Application']).strip()
+            clientref = str(row['Troux UUID']).strip()
+
+            url = f"{hl_url}/WS2/portfolioManagement/domains/{highlight_company_id}/applications"
+
+            payload ={
+          "name": app_name,
+          "contributors": [],
+          "domains": [
+            {
+              "id": highlight_company_id
+            }
+          ],
+          "status": "notArchived",
+          "clientRef": clientref,
+          "componentIds": []
+        }
+
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}"
+            }
+
+            response = requests.post(url, json=payload, headers=headers)
+
+            if response.status_code in (200, 201):
+                msg = f"[{index + 1}] Application '{app_name}' created successfully in the Hl."
+                logger.info(msg)
+            else:
+                msg = f"[{index + 1}] Failed to create application '{app_name}' in the Hl. Status: {response.status_code}, Response: {response.text}"
+                logger.error(msg)
+
+    except Exception as e:
+        error_msg = f"Error in create_applications_hl_from_excel(): {e}"
+        if logger:
+            logger.exception(error_msg)
+
+
 
 def find_new_applications(app_list_file, mapping_file, logger=None):
     try:
@@ -939,9 +994,11 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
         # update_rescan_column(mapping_excel_path,output_csv_file_path,log_file)
     elif output_type==5:
         log_file = LoggerManager.get_logger("Fetch_New_Applications_", log_dir=logs_dir)
+        app_log_file=LoggerManager.get_logger("create_new_Applications", log_dir=logs_dir)
         hl_applications_path=get_hl_applications_path(output_dir)
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_New_applicatiosn.xlsx")
         find_new_applications(hl_applications_path,App_Repo_Mapping,log_file)
+        create_applications_hl(highlight_base_url, app_log_file,App_Repo_Mapping,highlight_token,highlight_company_id)
     elif output_type == 11:  # New option for copying folder
         if not os.path.exists(csv_file_path):
             print(f"CSV file not found at {csv_file_path}. Please check your config.")
