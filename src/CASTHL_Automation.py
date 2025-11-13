@@ -23,8 +23,11 @@ import re
 from openpyxl import load_workbook
 from src import logger_manager
 from src.logger_manager import LoggerManager
-
-
+from src.AppRepoMapping import clean_folder_name
+import os
+import pandas as pd
+import logging
+import configparser
 def get_all_repo_metadata(org_name, access_token, output_file_path, log_file_path):
     start_time = datetime.datetime.now()
     log_messages = []
@@ -546,7 +549,7 @@ def fetch_and_save_applications(url, headers, output_path, logger,current_dateti
     """
 
     try:
-        logger.info("Fetching applications from API...")
+        logger.info("Fetching applications from HL Instance...")
         response = requests.get(url, headers=headers)
         response.raise_for_status()
 
@@ -565,10 +568,10 @@ def fetch_and_save_applications(url, headers, output_path, logger,current_dateti
 
         df = pd.DataFrame(data)
         output_path = os.path.join(output_path, f"LM_Highlight_AppDetails_{current_datetime}.xlsx")
-
+        logger.info("Found {} Applications in the HL instance".format(len(data)))
         # Save to Excel
         df.to_excel(output_path, index=False)
-        logger.info(f"Data written to Excel: {output_path}")
+        logger.info(f"Applications Data written to Excel: {output_path}")
 
         # Load workbook for styling
         wb = load_workbook(output_path)
@@ -591,7 +594,7 @@ def fetch_and_save_applications(url, headers, output_path, logger,current_dateti
             ws.column_dimensions[column[0].column_letter].width = max_length + 4
 
         wb.save(output_path)
-        logger.info(f"Excel saved successfully: {output_path}")
+        logger.info(f"Applications list  saved successfully: {output_path}")
 
     except requests.exceptions.RequestException as e:
         logger.exception(f"API request failed: {e}")
@@ -652,13 +655,9 @@ def match_applications(metadata_file, mapping_file, output_file, logger=None):
         if logger:
             logger.info(f"Removed {before_dedup - after_dedup} duplicate entries.")
 
-        # Step 6: Replace only specific special characters with space
-        special_chars_pattern = r'[~`!@#$%^&*()\-\_=+\[\]{}\\|;:\'\"<>,\.?/]'
-
         output_df['Application'] = output_df['Application'].apply(
-            lambda x: re.sub(special_chars_pattern, ' ', str(x)).strip()
+            lambda x: clean_folder_name(str(x).strip())
         )
-
         # Step 7: Export to Excel
         output_df.to_excel(output_file, index=False)
 
@@ -690,12 +689,12 @@ def create_applications_hl(hl_url, logger, App_Repo_Mapping, token,highlight_com
     try:
         # Step 1: Read NewApplications sheet
         df_new_apps = pd.read_excel(App_Repo_Mapping, sheet_name='NewApplications')
-        logger.info(f"Loaded {len(df_new_apps)} new applications from New Applications List.")
+        logger.info(f"Found {len(df_new_apps)} new applications from New Applications List To creatwe in HL instance.")
 
         # Step 2: Loop through each row and create application
         for index, row in df_new_apps.iterrows():
-            app_name = str(row['Application']).strip()
-            clientref = str(row['Troux UUID']).strip()
+            app_name = str(row['Application'])
+            clientref = str(row['Troux UUID'])
 
             url = f"{hl_url}/WS2/portfolioManagement/domains/{highlight_company_id}/applications"
 
@@ -736,7 +735,7 @@ def create_applications_hl(hl_url, logger, App_Repo_Mapping, token,highlight_com
 def find_new_applications(app_list_file, mapping_file, logger=None):
     try:
         if logger:
-            logger.info("Starting application comparison...")
+            logger.info("Starting applications comparison to find new appliactiosn in App-Repo-Mapping")
             logger.info(f"Application list file: {app_list_file}")
             logger.info(f"Mapping file: {mapping_file}")
 
@@ -772,13 +771,8 @@ def find_new_applications(app_list_file, mapping_file, logger=None):
 
         # Step 5: Identify new applications (not found in app list)
         new_apps_df = merged_df[merged_df['_merge'] == 'left_only'][['Application', 'Troux UUID']].copy()
-
-        # Step 6: Replace only the specified special characters with space
-        # Define your specific set of characters to replace
-        special_chars_pattern = r'[~`!@#$%^&*()\-\_=+\[\]{}\\|;:\'\"<>,\.?/]'
-
         new_apps_df['Application'] = new_apps_df['Application'].apply(
-            lambda x: re.sub(special_chars_pattern, ' ', x).strip()
+            lambda x: clean_folder_name(str(x).strip())
         )
 
         if not new_apps_df.empty:
@@ -798,15 +792,112 @@ def find_new_applications(app_list_file, mapping_file, logger=None):
             logger.exception(error_msg)
 
 
-
-
-
 def get_hl_applications_path(config_dir):
     for file_name in os.listdir(config_dir):
         if file_name.startswith("LM_Highlight_AppDetails_") and file_name.endswith(".xlsx"):
             return os.path.join(config_dir, file_name)
     return None
 
+def identify_to_be_deleted_apps():
+    """
+    Identify Highlight applications that no longer exist in GitHub (candidate for deletion).
+
+    Steps:
+      1. Compare 'CLIENTREF' in LM_Highlight_AppDetails_*.xlsx (Applications sheet)
+         vs 'Troux UUID' in App2RepoMapping.xlsx.
+      2. Generate Excel output with only [CLIENTREF, Name].
+      3. Log progress and results.
+
+    Returns:
+        output_file (str): Path to the generated Excel file.
+        log_file (str): Path to the log file.
+    """
+    from datetime import datetime
+
+    def load_config():
+        """Load configuration from config.properties"""
+        config = configparser.ConfigParser()
+        config_path = os.path.join(os.path.dirname(__file__), "config.properties")
+        config.read(config_path)
+
+        paths = {}
+        try:
+            paths["highlight_file"] = config.get("DEFAULT", "highlight_app_details_path", fallback="")
+            paths["mapping_file"] = config.get("DEFAULT", "app_repo_mapping_path", fallback="")
+            paths["output_dir"] = config.get("DEFAULT", "output_directory", fallback="")
+            paths["log_dir"] = config.get("DEFAULT", "log_directory", fallback="")
+        except Exception as e:
+            print(f"Error reading config.properties: {e}")
+        return paths
+
+    def setup_logger(log_dir):
+        """Setup logger with timestamp"""
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(
+            log_dir,
+            f"Identify_ToBeDeleted_Apps_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
+
+        logging.basicConfig(
+            filename=log_file,
+            level=logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s"
+        )
+        return log_file
+
+    config_paths = load_config()
+    highlight_file = config_paths["highlight_file"]
+    mapping_file = config_paths["mapping_file"]
+    output_dir = config_paths["output_dir"]
+    log_dir = config_paths["log_dir"]
+
+    os.makedirs(output_dir, exist_ok=True)
+    log_file = setup_logger(log_dir)
+
+    try:
+        logging.info("=== Step: Identify To-Be-Deleted Applications Started ===")
+
+        # Validate input files
+        if not os.path.exists(highlight_file):
+            raise FileNotFoundError(f"Highlight file not found: {highlight_file}")
+        if not os.path.exists(mapping_file):
+            raise FileNotFoundError(f"Mapping file not found: {mapping_file}")
+
+        # Load Highlight Excel
+        logging.info(f"Loading Highlight data from: {highlight_file}")
+        hl_df = pd.read_excel(highlight_file, sheet_name="Applications", dtype=str)
+        hl_df["CLIENTREF"] = hl_df["CLIENTREF"].astype(str).str.strip()
+
+        # Load Mapping Excel
+        logging.info(f"Loading mapping data from: {mapping_file}")
+        map_df = pd.read_excel(mapping_file, dtype=str)
+        map_df["Troux UUID"] = map_df["Troux UUID"].astype(str).str.strip()
+
+        # Compare and filter missing apps
+        missing_apps = hl_df[~hl_df["CLIENTREF"].isin(map_df["Troux UUID"])]
+        output_df = missing_apps[["CLIENTREF", "Name"]].copy()
+        output_df.rename(columns={"CLIENTREF": "TrouxID", "Name": "Application Name"}, inplace=True)
+        # Output summary
+        logging.info(f"Total Highlight apps: {len(hl_df)}")
+        logging.info(f"Total Mapping apps: {len(map_df)}")
+        logging.info(f"Candidate apps for deletion: {len(output_df)}")
+
+        # Output file
+        month_str = datetime.now().strftime("%b")
+        output_file = os.path.join(output_dir, f"LM_HL_Refresh_{month_str}_TobeDeleted_Apps.xlsx")
+
+        # Write result
+        output_df.to_excel(output_file, index=False)
+        logging.info(f"Output written to: {output_file}")
+        logging.info("=== Step Completed Successfully ===")
+
+        print(f"\nOutput generated: {output_file}")
+        print(f"Log file: {log_file}")
+        return output_file, log_file
+
+    except Exception as e:
+        logging.exception("Error occurred during Identify_ToBeDeleted_Apps process")
+        print(f" Error: {e}")
+        return None, log_file
 def main():
     while True:
         current_datetime = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -860,7 +951,8 @@ def main():
             print("3. List Out Candidate Applications For Rescan")
             print("4. Export HL existing data")
             print("5. Identify and create new applications")
-            print("6. Get applications long path")
+            print("6. Identify Deleted Applications")
+            print("13. Get applications long path")
             print("7. Trigger CAST Highlight onboarding for the source code")
             print("8. Unzip the downloaded source code")
             print("9.TBD")
@@ -1005,8 +1097,9 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
             return
         log_file_path = os.path.join(logs_dir, f"MainframeCopyAppendLog_{current_datetime}.log")
         mainframeCopyAppend_to_analyzed_from_csv(csv_file_path, log_file_path)
-
-    elif output_type == 6:
+    elif output_type==6:
+        identify_to_be_deleted_apps()
+    elif output_type == 13:
         parent_folder = src_dir_analyze
         if os.path.exists(parent_folder):
             long_paths = find_long_paths(parent_folder)
