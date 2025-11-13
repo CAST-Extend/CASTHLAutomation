@@ -535,6 +535,66 @@ def find_long_paths(parent_folder, max_length=260):
     except Exception as e:
         print(f"Error while executing find_long_paths() function: {e}")
 
+def create_app_txt(latest_hl_data, rescan_summary, app_logger, txt_output_path):
+    """
+    Compare Troux UUID from rescan summary with Application ClientRef from Highlight data.
+    If matched, write Application Name and Application ID to a text file.
+
+    Output format:
+    Application Name;Application ID
+    """
+    try:
+        app_logger.info("=== Step: Create App List TXT Started ===")
+        app_logger.info(f"Reading Highlight Excel: {latest_hl_data}")
+        app_logger.info(f"Reading Rescan Summary Excel: {rescan_summary}")
+
+        # Read Excel files
+        hl_df = pd.read_excel(latest_hl_data, dtype=str)
+        rescan_df = pd.read_excel(rescan_summary, dtype=str)
+
+        # Clean whitespace
+        hl_df["Application ClientRef"] = hl_df["Application ClientRef"].astype(str).str.strip()
+        rescan_df["Troux UUID"] = rescan_df["Troux UUID"].astype(str).str.strip()
+
+        # Merge data
+        merged_df = pd.merge(
+            rescan_df,
+            hl_df,
+            left_on="Troux UUID",
+            right_on="Application ClientRef",
+            how="inner"
+        )
+
+        app_logger.info(f"Matched applications found: {len(merged_df)}")
+
+        # Prepare the output lines with header
+        output_lines = ["Application Name;Application ID"]
+
+        # Add application data only if matches exist
+        if not merged_df.empty:
+            output_lines.extend([
+                f"{row['Application Name']};{row['Application ID']}"
+                for _, row in merged_df.iterrows()
+            ])
+        else:
+            app_logger.info("No matching applications found. Only header will be written.")
+
+        # Ensure output directory exists
+        os.makedirs(os.path.dirname(txt_output_path), exist_ok=True)
+
+        # Write to txt file
+        with open(txt_output_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(output_lines))
+
+        app_logger.info(f"Application list written to: {txt_output_path}")
+        app_logger.info("=== Step Completed Successfully ===")
+
+        print(f"\nOutput TXT generated at: {txt_output_path}")
+
+    except Exception as e:
+        app_logger.error(f"Error while creating app txt: {e}", exc_info=True)
+        print(f"Error while creating app txt: {e}")
+
 
 def fetch_and_save_applications(url, headers, output_path, logger,current_datetime):
     """
@@ -923,6 +983,7 @@ def main():
         highlight_base_url=config.get('HIGHLIGHT-ONBOARDING','highlight_base_url')
         highlight_company_id=config.get('HIGHLIGHT-ONBOARDING','highlight_company_id')
         highlight_token=config.get('HIGHLIGHT-ONBOARDING','highlight_token')
+        highlight_application_mapping=config.get('HIGHLIGHT-ONBOARDING','highlight_application_mapping')
         # Check if the 'Source Dir' folder exists, if not, create it
         if not os.path.exists(src_dir):
             os.makedirs(src_dir)
@@ -958,22 +1019,23 @@ def main():
             print("9.TBD")
             print("10.Create application folders and move repositories")
             print("11.Copy Mainframe folder from src to dest")
-            print("12.Run all the steps in one go from 1 to 10")
-            choice = input("Enter your choice (1/2/3/4/5/6/7/8/9/10): ")
+            print("12. Prepare Application.txt")
+            print("13.Run all the steps in one go from 1 to 10")
+            choice = input("Enter your choice (1/2/3/4/5/6/7/8/9/10/11/12): ")
 
-            if choice not in ['1', '2', '3', '4', '5', '6', '7', '8','9','10']:
-                print("Invalid choice. Please enter 1, 2, 3, 4, 5, 6, 7, 8,9 0r 10")
+            if choice not in ['1', '2', '3', '4', '5', '6', '7', '8','9','10','11','12']:
+                print("Invalid choice. Please enter 1, 2, 3, 4, 5, 6, 7, 8,9,10,11,12")
                 continue
 
             output_type = int(choice)
-            main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, csv_file_path, src_dir_analyze, last_refresh_date,highlight_base_url,highlight_company_id,highlight_token)
+            main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, csv_file_path, src_dir_analyze, last_refresh_date,highlight_base_url,highlight_company_id,highlight_token,highlight_application_mapping)
 
             # Ask user if they want to continue
             continue_option = input("Do you want to run another query? (yes/no): ")
             if continue_option.lower() != 'yes':
                 exit(0)
 
-def main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, csv_file_path, src_dir_analyze, last_refresh_date,highlight_base_url,highlight_company_id,highlight_token):
+def main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, csv_file_path, src_dir_analyze, last_refresh_date,highlight_base_url,highlight_company_id,highlight_token,highlight_application_mapping):
     if output_type == 1:
         output_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Metadata.json")
         log_file_path = os.path.join(logs_dir, f"{org_name}_Metadatadownload_{current_datetime}.log")
@@ -1251,6 +1313,40 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
             HLScanAndOnboard.main()
         except Exception as e:
             logging.error(f'{e}')
+    elif output_type == 12:
+        # Step 1: Setup loggers
+        rescan_logger = LoggerManager.get_logger("re_export_HL_existing_data_", log_dir=logs_dir)
+        app_logger = LoggerManager.get_logger("app_txt", log_dir=logs_dir)
+
+        # Step 2: Prepare API details
+        url = f"{highlight_base_url}/WS2/domains/{highlight_company_id}/applications"
+        headers = {"Authorization": f"Bearer {highlight_token}"}
+
+        # Step 3: Prepare paths
+        rescan_summary = os.path.join(output_dir, "Rescan_applications_summary.xlsx")
+
+        # Step 4: Find the latest LM_Highlight_AppDetails_ file
+        latest_hl_data = None
+        for file in os.listdir(output_dir):
+            if file.startswith("LM_Highlight_AppDetails_") and file.endswith(".xlsx"):
+                latest_hl_data = os.path.join(output_dir, file)
+                break
+
+        if not latest_hl_data:
+            rescan_logger.error("No LM_Highlight_AppDetails_ file found in the output directory.")
+            print("Error: LM_Highlight_AppDetails_ file not found.")
+        else:
+            from datetime import datetime
+            current_date = datetime.now().strftime("%Y%m%d")
+            fetch_and_save_applications(url, headers, output_dir, rescan_logger, current_date)
+
+            # Step 6: Create Application TXT file for rescan apps
+            create_app_txt(
+                latest_hl_data=latest_hl_data,
+                rescan_summary=rescan_summary,
+                app_logger=app_logger,
+                txt_output_path=highlight_application_mapping
+            )
 
     else:
         print("Invalid choice.")
