@@ -1,27 +1,16 @@
 import shutil
 import threading
-import requests
 import json
 import datetime
 import csv
-import pandas as pd
-import os
-from argparse import ArgumentParser
-import configparser
 import zipfile
-import UnzipFile
-import AppRepoMapping
-import HLScanAndOnboard
+from src import UnzipFile
+from src import  AppRepoMapping
+from src import HLScanAndOnboard
 from pathlib import Path
-
 import requests
-import logging
 from openpyxl.styles import PatternFill, Font, Alignment
-
-import pandas as pd
-import re
 from openpyxl import load_workbook
-from src import logger_manager
 from src.logger_manager import LoggerManager
 from src.AppRepoMapping import clean_folder_name
 import os
@@ -858,7 +847,7 @@ def get_hl_applications_path(config_dir):
             return os.path.join(config_dir, file_name)
     return None
 
-def identify_to_be_deleted_apps():
+def identify_to_be_deleted_apps(hl_applications_path,output_dir,logs_dir,App_Repo_Mapping):
     """
     Identify Highlight applications that no longer exist in GitHub (candidate for deletion).
 
@@ -874,21 +863,6 @@ def identify_to_be_deleted_apps():
     """
     from datetime import datetime
 
-    def load_config():
-        """Load configuration from config.properties"""
-        config = configparser.ConfigParser()
-        config_path = os.path.join(os.path.dirname(__file__), "config.properties")
-        config.read(config_path)
-
-        paths = {}
-        try:
-            paths["highlight_file"] = config.get("DEFAULT", "highlight_app_details_path", fallback="")
-            paths["mapping_file"] = config.get("DEFAULT", "app_repo_mapping_path", fallback="")
-            paths["output_dir"] = config.get("DEFAULT", "output_directory", fallback="")
-            paths["log_dir"] = config.get("DEFAULT", "log_directory", fallback="")
-        except Exception as e:
-            print(f"Error reading config.properties: {e}")
-        return paths
 
     def setup_logger(log_dir):
         """Setup logger with timestamp"""
@@ -904,38 +878,33 @@ def identify_to_be_deleted_apps():
         )
         return log_file
 
-    config_paths = load_config()
-    highlight_file = config_paths["highlight_file"]
-    mapping_file = config_paths["mapping_file"]
-    output_dir = config_paths["output_dir"]
-    log_dir = config_paths["log_dir"]
 
     os.makedirs(output_dir, exist_ok=True)
-    log_file = setup_logger(log_dir)
+    log_file = setup_logger(logs_dir)
 
     try:
         logging.info("=== Step: Identify To-Be-Deleted Applications Started ===")
 
         # Validate input files
-        if not os.path.exists(highlight_file):
-            raise FileNotFoundError(f"Highlight file not found: {highlight_file}")
-        if not os.path.exists(mapping_file):
-            raise FileNotFoundError(f"Mapping file not found: {mapping_file}")
+        if not os.path.exists(hl_applications_path):
+            raise FileNotFoundError(f"Highlight file not found: {hl_applications_path}")
+        if not os.path.exists(hl_applications_path):
+            raise FileNotFoundError(f"Mapping file not found: {hl_applications_path}")
 
         # Load Highlight Excel
-        logging.info(f"Loading Highlight data from: {highlight_file}")
-        hl_df = pd.read_excel(highlight_file, sheet_name="Applications", dtype=str)
-        hl_df["CLIENTREF"] = hl_df["CLIENTREF"].astype(str).str.strip()
+        logging.info(f"Loading Highlight data from: {hl_applications_path}")
+        hl_df = pd.read_excel(hl_applications_path, dtype=str)
+        hl_df["Application ClientRef"] = hl_df["Application ClientRef"].astype(str).str.strip()
 
         # Load Mapping Excel
-        logging.info(f"Loading mapping data from: {mapping_file}")
-        map_df = pd.read_excel(mapping_file, dtype=str)
+        logging.info(f"Loading mapping data from: {hl_applications_path}")
+        map_df = pd.read_excel(App_Repo_Mapping, dtype=str)
         map_df["Troux UUID"] = map_df["Troux UUID"].astype(str).str.strip()
 
         # Compare and filter missing apps
-        missing_apps = hl_df[~hl_df["CLIENTREF"].isin(map_df["Troux UUID"])]
-        output_df = missing_apps[["CLIENTREF", "Name"]].copy()
-        output_df.rename(columns={"CLIENTREF": "TrouxID", "Name": "Application Name"}, inplace=True)
+        missing_apps = hl_df[~hl_df["Application ClientRef"].isin(map_df["Troux UUID"])]
+        output_df = missing_apps[["Application ClientRef", "Application Name"]].copy()
+        output_df.rename(columns={"Application ClientRef": "TrouxID", "Name": "Application Name"}, inplace=True)
         # Output summary
         logging.info(f"Total Highlight apps: {len(hl_df)}")
         logging.info(f"Total Mapping apps: {len(map_df)}")
@@ -1143,7 +1112,7 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
             print("Application to repository mapping information is missing, please refer README.md to create the mapping spreadsheet.")
             return
         mapping_excel_path = os.path.join(config_dir, f"App-Repo-Mapping.xlsx")
-        add_action_column(mapping_excel_path, output_csv_file_path)
+        add_action_column(App_Repo_Mapping, output_csv_file_path)
         AppRepoMapping.create_application_folders(App_Repo_Mapping, unzip_dir, src_dir_analyze, logger, summary_logger)
         # update_rescan_column(mapping_excel_path,output_csv_file_path,log_file)
     elif output_type==5:
@@ -1160,7 +1129,8 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
         log_file_path = os.path.join(logs_dir, f"MainframeCopyAppendLog_{current_datetime}.log")
         mainframeCopyAppend_to_analyzed_from_csv(csv_file_path, log_file_path)
     elif output_type==6:
-        identify_to_be_deleted_apps()
+        hl_applications_path=get_hl_applications_path(output_dir)
+        identify_to_be_deleted_apps(hl_applications_path,output_dir,logs_dir,App_Repo_Mapping)
     elif output_type == 13:
         parent_folder = src_dir_analyze
         if os.path.exists(parent_folder):
