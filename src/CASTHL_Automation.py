@@ -745,7 +745,7 @@ def create_applications_hl(hl_url, logger, App_Repo_Mapping, token,highlight_com
             app_name = str(row['Application'])
             clientref = str(row['Troux UUID'])
 
-            url = f"{hl_url}/WS2/portfolioManagement/domains/{highlight_company_id}/applications"
+            url = f"{hl_url}/WS2/portfolioManagement/domains/{highlight_company_id}/applications?expand=contributor&expand=domain"
 
             payload ={
           "name": app_name,
