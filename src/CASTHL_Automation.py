@@ -689,7 +689,7 @@ def match_applications(metadata_file, mapping_file, output_file, logger=None):
             mapping_df,
             how='inner',
             left_on='name',
-            right_on='Repo Name'
+            right_on='Repository'
         )
         if logger:
             logger.info(f"Merged records: {len(merged_df)}")
@@ -802,11 +802,11 @@ def find_new_applications(app_list_file, mapping_file, logger=None):
             raise ValueError(f"Mapping file must contain columns: {required_cols_map}")
 
         # Step 3: Normalize data (lowercase + trim)
-        app_list_df['Application Name'] = app_list_df['Application Name'].astype(str).str.strip().str.lower()
-        app_list_df['Application ClientRef'] = app_list_df['Application ClientRef'].astype(str).str.strip().str.lower()
+        app_list_df['Application Name'] = app_list_df['Application Name'].astype(str).str.strip()
+        app_list_df['Application ClientRef'] = app_list_df['Application ClientRef'].astype(str).str.strip()
 
-        mapping_df['Application'] = mapping_df['Application'].astype(str).str.strip().str.lower()
-        mapping_df['Troux UUID'] = mapping_df['Troux UUID'].astype(str).str.strip().str.lower()
+        mapping_df['Application'] = mapping_df['Application'].astype(str).str.strip()
+        mapping_df['Troux UUID'] = mapping_df['Troux UUID'].astype(str).str.strip()
 
         # Step 4: Compare mapping data with application list
         merged_df = pd.merge(
@@ -975,25 +975,21 @@ def main():
 
         while True:
             print("Select options:")
-            #print("0. Create Highlight Domain and Application")
             print("1. Download Metadata for GitHub organization")
-            print("2. Download source code for all repositories in the organization in batches")
-            print("3. List Out Candidate Applications For Rescan")
-            print("4. Export HL existing data")
-            print("5. Identify and create new applications")
-            print("6. Identify Deleted Applications")
-            print("13. Get applications long path")
-            print("7. Trigger CAST Highlight onboarding for the source code")
-            print("8. Unzip the downloaded source code")
-            print("9.TBD")
-            print("10.Create application folders and move repositories")
-            print("11.Copy Mainframe folder from src to dest")
-            print("12. Prepare Application.txt")
-            print("13.Run all the steps in one go from 1 to 10")
-            choice = input("Enter your choice (1/2/3/4/5/6/7/8/9/10/11/12): ")
+            print("2. List Out Candidate Applications For Rescan")
+            print("3. Export HL existing data")
+            print("4. Identify and create new applications")
+            print("5. Identify Deleted Applications")
+            print("6. Download source code for all repositories in the organization in batches")
+            print("7. Unzip the downloaded source code")
+            print("8. Create application folders and move repositories")
+            print("9. Copy Mainframe folder from src to dest")
+            print("10. Prepare Application.txtt")
+            print("11. Trigger CAST Highlight onboarding for the source code")
+            choice = input("Enter your choice (1/2/3/4/5/6/7/8/9/10/11): ")
 
-            if choice not in ['1', '2', '3', '4', '5', '6', '7', '8','9','10','11','12']:
-                print("Invalid choice. Please enter 1, 2, 3, 4, 5, 6, 7, 8,9,10,11,12")
+            if choice not in ['1', '2', '3', '4', '5', '6', '7', '8','9','10','11']:
+                print("Invalid choice. Please enter 1, 2, 3, 4, 5, 6, 7, 8,9,10,11")
                 continue
 
             output_type = int(choice)
@@ -1017,7 +1013,7 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
         print(f"Refer Log file {log_file_path} for download log and time to download Metadata.")
         print(f"CSV file generated {output_csv_file_path} with summary of repositories which can be used for downloading source code(Task-2).\n")
 
-    elif output_type == 2:
+    elif output_type == 6:
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
         if not os.path.exists(output_csv_file_path):
             print("Please run option 1 to download metadata first.")
@@ -1085,24 +1081,24 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
             t.join()
 
         combine_all_batch_csv_files(directory, output_csv_file_path)       
-    elif output_type==3:
+    elif output_type==2:
         rescan_logger = LoggerManager.get_logger("Applications_rescan", log_dir=logs_dir)
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
         output_file=os.path.join(output_dir, f"Rescan_applications_summary.xlsx")
         match_applications(output_csv_file_path,App_Repo_Mapping,output_file,rescan_logger)
-    elif output_type == 8:
+    elif output_type == 7:
         try:
             UnzipFile.unzip_code(src_dir, unzip_dir, os.path.join(logs_dir, f"Unzip_Execution_{current_datetime}.log"), os.path.join(logs_dir, f"Unzip_Time_{current_datetime}.log"))
         except Exception as e:
             print(f"Error occurred during extraction: {e}")
-    elif output_type==4:
+    elif output_type==3:
         rescan_logger = LoggerManager.get_logger("Export_HL_existing_data", log_dir=logs_dir)
         url = "{}/WS2/domains/{}/applications".format(highlight_base_url,highlight_company_id)
         headers = {"Authorization": "Bearer {}".format(highlight_token)}
         from datetime import datetime
         current_date = datetime.now().strftime("%Y%m%d")
         fetch_and_save_applications(url,headers,output_dir,rescan_logger,current_date)
-    elif output_type == 10:
+    elif output_type == 8:
         log_file=os.path.join(logs_dir, f"AppRepoMapping_{current_datetime}.log")
         logger = AppRepoMapping.setup_logger(log_file)
         summary_log_file = os.path.join(logs_dir, f"AppRepoMappingSummary_log_{current_datetime}.txt")
@@ -1115,20 +1111,20 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
         add_action_column(App_Repo_Mapping, output_csv_file_path)
         AppRepoMapping.create_application_folders(App_Repo_Mapping, unzip_dir, src_dir_analyze, logger, summary_logger)
         # update_rescan_column(mapping_excel_path,output_csv_file_path,log_file)
-    elif output_type==5:
+    elif output_type==4:
         log_file = LoggerManager.get_logger("Fetch_New_Applications_", log_dir=logs_dir)
         app_log_file=LoggerManager.get_logger("create_new_Applications", log_dir=logs_dir)
         hl_applications_path=get_hl_applications_path(output_dir)
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_New_applicatiosn.xlsx")
         find_new_applications(hl_applications_path,App_Repo_Mapping,log_file)
         create_applications_hl(highlight_base_url, app_log_file,App_Repo_Mapping,highlight_token,highlight_company_id)
-    elif output_type == 11:  # New option for copying folder
+    elif output_type == 9:  # New option for copying folder
         if not os.path.exists(csv_file_path):
             print(f"CSV file not found at {csv_file_path}. Please check your config.")
             return
         log_file_path = os.path.join(logs_dir, f"MainframeCopyAppendLog_{current_datetime}.log")
         mainframeCopyAppend_to_analyzed_from_csv(csv_file_path, log_file_path)
-    elif output_type==6:
+    elif output_type==5:
         hl_applications_path=get_hl_applications_path(output_dir)
         identify_to_be_deleted_apps(hl_applications_path,output_dir,logs_dir,App_Repo_Mapping)
     elif output_type == 13:
@@ -1149,7 +1145,7 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
         else:
             print("The specified parent folder does not exist.\n")
     
-    elif output_type == 7:
+    elif output_type == 11:
         try:
             HLScanAndOnboard.main()
         except Exception as e:
@@ -1283,7 +1279,7 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
             HLScanAndOnboard.main()
         except Exception as e:
             logging.error(f'{e}')
-    elif output_type == 12:
+    elif output_type == 10:
         # Step 1: Setup loggers
         rescan_logger = LoggerManager.get_logger("re_export_HL_existing_data_", log_dir=logs_dir)
         app_logger = LoggerManager.get_logger("app_txt", log_dir=logs_dir)
