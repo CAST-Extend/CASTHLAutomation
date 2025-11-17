@@ -1,21 +1,22 @@
 import shutil
 import threading
-import requests
 import json
 import datetime
 import csv
-import pandas as pd
-import os
-from argparse import ArgumentParser
-import configparser
 import zipfile
-import UnzipFile
-import AppRepoMapping
-import HLScanAndOnboard
-import logging
+from src import UnzipFile
+from src import  AppRepoMapping
+from src import HLScanAndOnboard
 from pathlib import Path
-
-
+import requests
+from openpyxl.styles import PatternFill, Font, Alignment
+from openpyxl import load_workbook
+from src.logger_manager import LoggerManager
+from src.AppRepoMapping import clean_folder_name
+import os
+import pandas as pd
+import logging
+import configparser
 def get_all_repo_metadata(org_name, access_token, output_file_path, log_file_path):
     start_time = datetime.datetime.now()
     log_messages = []
@@ -139,7 +140,36 @@ def add_new_columns_to_csv(output_csv_file_path):
         df.to_csv(output_csv_file_path, index=False)
     except Exception as e:
         print(f"Error while executing add_new_columns_to_csv() function: {e}")   
+def update_rescan_column(mapping_excel_path,output_csv_file_path,logger):
+    try:
+        logger.info("Starting update_rescan_column()...")
+        logger.info(f"Reading source CSV: {output_csv_file_path}")
+        source_df = pd.read_csv(output_csv_file_path)
 
+        logger.info(f"Reading target Excel: {mapping_excel_path}")
+        target_df = pd.read_excel(mapping_excel_path)
+
+        if 'name' not in source_df.columns or 'Download' not in source_df.columns:
+            logger.error("Missing required columns ['name', 'Download'] in source CSV.")
+            return
+
+        if 'Repository' not in target_df.columns or 'Application' not in target_df.columns:
+            logger.error("Missing required columns ['Repository', 'Application'] in target Excel.")
+            return
+
+        logger.info("Creating mapping between source and target...")
+        download_map = dict(zip(source_df['name'], source_df['Download']))
+
+        target_df['rescan'] = target_df['Repository'].map(download_map)
+        target_df['rescan'] = target_df['rescan'].fillna('N')
+
+        logger.info("Saving updated Excel file...")
+        target_df.to_excel(mapping_excel_path, index=False)
+
+        rescan_apps = target_df.loc[target_df['rescan'] == 'Y', 'Application'].unique().tolist()
+        logger.info(f"Applications that need rescan ({len(rescan_apps)} found): {rescan_apps}")
+    except Exception as e:
+        logger.exception(f"Error while executing update_rescan_column(): {e}")
 def update_download_column(output_csv_file_path, last_refresh_date):
     try:
         # Load your CSV file
@@ -494,6 +524,409 @@ def find_long_paths(parent_folder, max_length=260):
     except Exception as e:
         print(f"Error while executing find_long_paths() function: {e}")
 
+def create_app_txt(latest_hl_data, rescan_summary, app_logger, txt_output_path):
+    """
+    Compare Troux UUID from rescan summary with Application ClientRef from Highlight data.
+    If matched, write Application Name and Application ID to a text file.
+
+    Output format:
+    Application Name;Application ID
+    """
+    try:
+        app_logger.info("=== Step: Create App List TXT Started ===")
+        app_logger.info(f"Reading Highlight Excel: {latest_hl_data}")
+        app_logger.info(f"Reading Rescan Summary Excel: {rescan_summary}")
+
+        # Read Excel files
+        hl_df = pd.read_excel(latest_hl_data, dtype=str)
+        rescan_df = pd.read_excel(rescan_summary, dtype=str)
+
+        # Clean whitespace
+        hl_df["Application ClientRef"] = hl_df["Application ClientRef"].astype(str).str.strip()
+        rescan_df["Troux UUID"] = rescan_df["Troux UUID"].astype(str).str.strip()
+
+        # Merge data
+        merged_df = pd.merge(
+            rescan_df,
+            hl_df,
+            left_on="Troux UUID",
+            right_on="Application ClientRef",
+            how="inner"
+        )
+
+        app_logger.info(f"Matched applications found: {len(merged_df)}")
+
+        # Prepare the output lines with header
+        output_lines = ["Application Name;Application ID"]
+
+        # Add application data only if matches exist
+        if not merged_df.empty:
+            output_lines.extend([
+                f"{row['Application Name']};{row['Application ID']}"
+                for _, row in merged_df.iterrows()
+            ])
+        else:
+            app_logger.info("No matching applications found. Only header will be written.")
+
+        # Ensure output directory exists
+        os.makedirs(os.path.dirname(txt_output_path), exist_ok=True)
+
+        # Write to txt file
+        with open(txt_output_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(output_lines))
+
+        app_logger.info(f"Application list written to: {txt_output_path}")
+        app_logger.info("=== Step Completed Successfully ===")
+
+        print(f"\nOutput TXT generated at: {txt_output_path}")
+
+    except Exception as e:
+        app_logger.error(f"Error while creating app txt: {e}", exc_info=True)
+        print(f"Error while creating app txt: {e}")
+
+
+def fetch_and_save_applications(url, headers, output_path, logger,current_datetime):
+    """
+    Fetch applications from a REST API and save them to an Excel file
+    with formatted headers and auto-adjusted column widths.
+
+    Parameters:
+        url (str): API endpoint for fetching applications
+        headers (dict): Authorization or other HTTP headers
+        output_path (str): Path where the Excel file will be saved
+        log_file_path (str): Optional file path for logging output
+    """
+
+    try:
+        logger.info("Fetching applications from HL Instance...")
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+
+        apps = response.json()
+        if not apps:
+            logger.warning("No applications found in response.")
+            return
+
+        data = []
+        for app in apps:
+            data.append({
+                "Application ID": app.get("id"),
+                "Application Name": app.get("name"),
+                "Application ClientRef": app.get("clientRef", None)
+            })
+
+        df = pd.DataFrame(data)
+        output_path = os.path.join(output_path, f"LM_Highlight_AppDetails_{current_datetime}.xlsx")
+        logger.info("Found {} Applications in the HL instance".format(len(data)))
+        # Save to Excel
+        df.to_excel(output_path, index=False)
+        logger.info(f"Applications Data written to Excel: {output_path}")
+
+        # Load workbook for styling
+        wb = load_workbook(output_path)
+        ws = wb.active
+
+        # Header styling
+        header_fill = PatternFill(start_color="003366", end_color="003366", fill_type="solid")  # Dark blue
+        header_font = Font(color="FFFFFF", bold=True)  # White bold text
+        center_align = Alignment(horizontal="center", vertical="center")
+
+        # Apply style to header row
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = center_align
+
+        # Auto column width
+        for column in ws.columns:
+            max_length = max(len(str(cell.value)) if cell.value else 0 for cell in column)
+            ws.column_dimensions[column[0].column_letter].width = max_length + 4
+
+        wb.save(output_path)
+        logger.info(f"Applications list  saved successfully: {output_path}")
+
+    except requests.exceptions.RequestException as e:
+        logger.exception(f"API request failed: {e}")
+    except Exception as e:
+        logger.exception(f"Error while creating Excel: {e}")
+
+
+
+def match_applications(metadata_file, mapping_file, output_file, logger=None):
+    """
+    Match applications from metadata and mapping files where Download == 'Y',
+    and export unique Application–Troux UUID pairs to an Excel file.
+
+    Parameters:
+        metadata_file (str): Path to the metadata CSV file
+        mapping_file (str): Path to the App-Repo-Mapping Excel file
+        output_file (str): Path where matched output Excel will be saved
+        logger (logging.Logger, optional): Logger for logging info/warnings
+    """
+
+    try:
+        if logger:
+            logger.info("Starting application matching process...")
+            logger.info(f"Metadata file: {metadata_file}")
+            logger.info(f"Mapping file: {mapping_file}")
+        else:
+            print("Starting application matching process...")
+
+        # Step 1: Load input files
+        metadata_df = pd.read_csv(metadata_file)
+        mapping_df = pd.read_excel(mapping_file)
+        if logger:
+            logger.info(f"Loaded {len(metadata_df)} metadata records and {len(mapping_df)} mapping records.")
+
+        # Step 2: Filter rows where Download == 'Y'
+        metadata_filtered = metadata_df[metadata_df['Download'].str.upper() == 'Y']
+        if logger:
+            logger.info(f"Filtered {len(metadata_filtered)} records with Download='Y'.")
+
+        # Step 3: Merge like VLOOKUP (name ↔ Repo Name)
+        merged_df = pd.merge(
+            metadata_filtered,
+            mapping_df,
+            how='inner',
+            left_on='name',
+            right_on='Repository'
+        )
+        if logger:
+            logger.info(f"Merged records: {len(merged_df)}")
+
+        # Step 4: Select required columns
+        output_df = merged_df[['Application', 'Troux UUID']].copy()
+
+        # Step 5: Remove duplicates
+        before_dedup = len(output_df)
+        output_df = output_df.drop_duplicates(subset=['Application', 'Troux UUID'], keep='first')
+        after_dedup = len(output_df)
+        if logger:
+            logger.info(f"Removed {before_dedup - after_dedup} duplicate entries.")
+
+        output_df['Application'] = output_df['Application'].apply(
+            lambda x: clean_folder_name(str(x).strip())
+        )
+        # Step 7: Export to Excel
+        output_df.to_excel(output_file, index=False)
+
+        msg = f"Output saved to: {output_file} | Total unique matched records: {len(output_df)}"
+        if logger:
+            logger.info(msg)
+        else:
+            print(msg)
+
+    except Exception as e:
+        error_msg = f"Error in match_applications(): {e}"
+        if logger:
+            logger.exception(error_msg)
+        else:
+            print(error_msg)
+
+
+
+def create_applications_hl(hl_url, logger, App_Repo_Mapping, token,highlight_company_id):
+    """
+    Read 'NewApplications' sheet from App_Repo_Mapping Excel and create applications in CAST Highlight.
+
+    Parameters:
+        hl_url (str): Base URL of CAST Highlight instance
+        logger: Logger instance
+        App_Repo_Mapping (str): Path to Excel file containing 'NewApplications' sheet
+        token (str): Bearer token for authorization
+    """
+    try:
+        # Step 1: Read NewApplications sheet
+        df_new_apps = pd.read_excel(App_Repo_Mapping, sheet_name='NewApplications')
+        logger.info(f"Found {len(df_new_apps)} new applications from New Applications List To creatwe in HL instance.")
+
+        # Step 2: Loop through each row and create application
+        for index, row in df_new_apps.iterrows():
+            app_name = str(row['Application'])
+            clientref = str(row['Troux UUID'])
+
+            url = f"{hl_url}/WS2/portfolioManagement/domains/{highlight_company_id}/applications?expand=contributor&expand=domain"
+
+            payload ={
+          "name": app_name,
+          "contributors": [],
+          "domains": [
+            {
+              "id": highlight_company_id
+            }
+          ],
+          "status": "notArchived",
+          "clientRef": clientref,
+          "componentIds": []
+        }
+
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}"
+            }
+
+            response = requests.post(url, json=payload, headers=headers)
+
+            if response.status_code in (200, 201):
+                msg = f"[{index + 1}] Application '{app_name}' created successfully in the Hl."
+                logger.info(msg)
+            else:
+                msg = f"[{index + 1}] Failed to create application '{app_name}' in the Hl. Status: {response.status_code}, Response: {response.text}"
+                logger.error(msg)
+
+    except Exception as e:
+        error_msg = f"Error in create_applications_hl_from_excel(): {e}"
+        if logger:
+            logger.exception(error_msg)
+
+
+
+def find_new_applications(app_list_file, mapping_file, logger=None):
+    try:
+        if logger:
+            logger.info("Starting applications comparison to find new appliactiosn in App-Repo-Mapping")
+            logger.info(f"Application list file: {app_list_file}")
+            logger.info(f"Mapping file: {mapping_file}")
+
+        # Step 1: Read both Excel files
+        app_list_df = pd.read_excel(app_list_file)
+        mapping_df = pd.read_excel(mapping_file)
+
+        # Step 2: Validate required columns
+        required_cols_app = {'Application Name', 'Application ClientRef'}
+        required_cols_map = {'Application', 'Troux UUID'}
+
+        if not required_cols_app.issubset(app_list_df.columns):
+            raise ValueError(f"Application List file must contain columns: {required_cols_app}")
+        if not required_cols_map.issubset(mapping_df.columns):
+            raise ValueError(f"Mapping file must contain columns: {required_cols_map}")
+
+        # Step 3: Normalize data (lowercase + trim)
+        app_list_df['Application Name'] = app_list_df['Application Name'].astype(str).str.strip()
+        app_list_df['Application ClientRef'] = app_list_df['Application ClientRef'].astype(str).str.strip()
+
+        mapping_df['Application'] = mapping_df['Application'].astype(str).str.strip()
+        mapping_df['Troux UUID'] = mapping_df['Troux UUID'].astype(str).str.strip()
+
+        # Step 4: Compare mapping data with application list
+        merged_df = pd.merge(
+            mapping_df,
+            app_list_df,
+            how='left',
+            left_on=['Application', 'Troux UUID'],
+            right_on=['Application Name', 'Application ClientRef'],
+            indicator=True
+        )
+
+        # Step 5: Identify new applications (not found in app list)
+        new_apps_df = merged_df[merged_df['_merge'] == 'left_only'][['Application', 'Troux UUID']].copy()
+        new_apps_df['Application'] = new_apps_df['Application'].apply(
+            lambda x: clean_folder_name(str(x).strip())
+        )
+
+        if not new_apps_df.empty:
+            with pd.ExcelWriter(mapping_file, mode='a', engine='openpyxl', if_sheet_exists='replace') as writer:
+                new_apps_df.to_excel(writer, sheet_name='NewApplications', index=False)
+
+            msg = f"Found {len(new_apps_df)} new/unmapped applications. Stored in 'NewApplications' sheet of {mapping_file}"
+        else:
+            msg = "No new/unmapped applications found."
+
+        if logger:
+            logger.info(msg)
+
+    except Exception as e:
+        error_msg = f"Error in find_new_applications(): {e}"
+        if logger:
+            logger.exception(error_msg)
+
+
+def get_hl_applications_path(config_dir):
+    for file_name in os.listdir(config_dir):
+        if file_name.startswith("LM_Highlight_AppDetails_") and file_name.endswith(".xlsx"):
+            return os.path.join(config_dir, file_name)
+    return None
+
+def identify_to_be_deleted_apps(hl_applications_path,output_dir,logs_dir,App_Repo_Mapping):
+    """
+    Identify Highlight applications that no longer exist in GitHub (candidate for deletion).
+
+    Steps:
+      1. Compare 'CLIENTREF' in LM_Highlight_AppDetails_*.xlsx (Applications sheet)
+         vs 'Troux UUID' in App2RepoMapping.xlsx.
+      2. Generate Excel output with only [CLIENTREF, Name].
+      3. Log progress and results.
+
+    Returns:
+        output_file (str): Path to the generated Excel file.
+        log_file (str): Path to the log file.
+    """
+    from datetime import datetime
+
+
+    def setup_logger(log_dir):
+        """Setup logger with timestamp"""
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(
+            log_dir,
+            f"Identify_ToBeDeleted_Apps_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
+
+        logging.basicConfig(
+            filename=log_file,
+            level=logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s"
+        )
+        return log_file
+
+
+    os.makedirs(output_dir, exist_ok=True)
+    log_file = setup_logger(logs_dir)
+
+    try:
+        logging.info("=== Step: Identify To-Be-Deleted Applications Started ===")
+
+        # Validate input files
+        if not os.path.exists(hl_applications_path):
+            raise FileNotFoundError(f"Highlight file not found: {hl_applications_path}")
+        if not os.path.exists(hl_applications_path):
+            raise FileNotFoundError(f"Mapping file not found: {hl_applications_path}")
+
+        # Load Highlight Excel
+        logging.info(f"Loading Highlight data from: {hl_applications_path}")
+        hl_df = pd.read_excel(hl_applications_path, dtype=str)
+        hl_df["Application ClientRef"] = hl_df["Application ClientRef"].astype(str).str.strip()
+
+        # Load Mapping Excel
+        logging.info(f"Loading mapping data from: {hl_applications_path}")
+        map_df = pd.read_excel(App_Repo_Mapping, dtype=str)
+        map_df["Troux UUID"] = map_df["Troux UUID"].astype(str).str.strip()
+
+        # Compare and filter missing apps
+        missing_apps = hl_df[~hl_df["Application ClientRef"].isin(map_df["Troux UUID"])]
+        output_df = missing_apps[["Application ClientRef", "Application Name"]].copy()
+        output_df.rename(columns={"Application ClientRef": "TrouxID", "Name": "Application Name"}, inplace=True)
+        # Output summary
+        logging.info(f"Total Highlight apps: {len(hl_df)}")
+        logging.info(f"Total Mapping apps: {len(map_df)}")
+        logging.info(f"Candidate apps for deletion: {len(output_df)}")
+
+        # Output file
+        month_str = datetime.now().strftime("%b")
+        output_file = os.path.join(output_dir, f"LM_HL_Refresh_{month_str}_TobeDeleted_Apps.xlsx")
+
+        # Write result
+        output_df.to_excel(output_file, index=False)
+        logging.info(f"Output written to: {output_file}")
+        logging.info("=== Step Completed Successfully ===")
+
+        print(f"\nOutput generated: {output_file}")
+        print(f"Log file: {log_file}")
+        return output_file, log_file
+
+    except Exception as e:
+        logging.exception("Error occurred during Identify_ToBeDeleted_Apps process")
+        print(f" Error: {e}")
+        return None, log_file
 def main():
     while True:
         current_datetime = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -516,7 +949,10 @@ def main():
         src_dir_analyze = config.get('Directories', 'src_dir_analyze')
         last_refresh_date = config.get('GitHub', 'last_refresh_date')
         csv_file_path = config.get('Input-File', 'source_destination_mapping')  # Read the CSV file path
-
+        highlight_base_url=config.get('HIGHLIGHT-ONBOARDING','highlight_base_url')
+        highlight_company_id=config.get('HIGHLIGHT-ONBOARDING','highlight_company_id')
+        highlight_token=config.get('HIGHLIGHT-ONBOARDING','highlight_token')
+        highlight_application_mapping=config.get('HIGHLIGHT-ONBOARDING','highlight_application_mapping')
         # Check if the 'Source Dir' folder exists, if not, create it
         if not os.path.exists(src_dir):
             os.makedirs(src_dir)
@@ -539,30 +975,32 @@ def main():
 
         while True:
             print("Select options:")
-            #print("0. Create Highlight Domain and Application")
             print("1. Download Metadata for GitHub organization")
-            print("2. Download source code for all repositories in the organization in batches")
-            print("3. Unzip the downloaded source code")
-            print("4. Create application folders and move repositories")
-            print("5. Copy Mainframe folder from src to dest")
-            print("6. Get applications long path")
-            print("7. Trigger CAST Highlight onboarding for the source code")
-            print("8. Run all the steps in one go from 1 to 7")
-            choice = input("Enter your choice (1/2/3/4/5/6/7/8): ")
+            print("2. List Out Candidate Applications For Rescan")
+            print("3. Export HL existing data")
+            print("4. Identify and create new applications")
+            print("5. Identify Deleted Applications")
+            print("6. Download source code for all repositories in the organization in batches")
+            print("7. Unzip the downloaded source code")
+            print("8. Create application folders and move repositories")
+            print("9. Copy Mainframe folder from src to dest")
+            print("10. Prepare Application.txtt")
+            print("11. Trigger CAST Highlight onboarding for the source code")
+            choice = input("Enter your choice (1/2/3/4/5/6/7/8/9/10/11): ")
 
-            if choice not in ['1', '2', '3', '4', '5', '6', '7', '8']:
-                print("Invalid choice. Please enter 1, 2, 3, 4, 5, 6, 7 or 8.")
+            if choice not in ['1', '2', '3', '4', '5', '6', '7', '8','9','10','11']:
+                print("Invalid choice. Please enter 1, 2, 3, 4, 5, 6, 7, 8,9,10,11")
                 continue
 
             output_type = int(choice)
-            main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, csv_file_path, src_dir_analyze, last_refresh_date)
+            main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, csv_file_path, src_dir_analyze, last_refresh_date,highlight_base_url,highlight_company_id,highlight_token,highlight_application_mapping)
 
             # Ask user if they want to continue
             continue_option = input("Do you want to run another query? (yes/no): ")
             if continue_option.lower() != 'yes':
                 exit(0)
 
-def main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, csv_file_path, src_dir_analyze, last_refresh_date):
+def main_operations(output_type, current_datetime, org_name, token, config_dir, src_dir, unzip_dir, logs_dir, output_dir, App_Repo_Mapping, csv_file_path, src_dir_analyze, last_refresh_date,highlight_base_url,highlight_company_id,highlight_token,highlight_application_mapping):
     if output_type == 1:
         output_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Metadata.json")
         log_file_path = os.path.join(logs_dir, f"{org_name}_Metadatadownload_{current_datetime}.log")
@@ -575,7 +1013,7 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
         print(f"Refer Log file {log_file_path} for download log and time to download Metadata.")
         print(f"CSV file generated {output_csv_file_path} with summary of repositories which can be used for downloading source code(Task-2).\n")
 
-    elif output_type == 2:
+    elif output_type == 6:
         output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
         if not os.path.exists(output_csv_file_path):
             print("Please run option 1 to download metadata first.")
@@ -643,14 +1081,24 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
             t.join()
 
         combine_all_batch_csv_files(directory, output_csv_file_path)       
-
-    elif output_type == 3:
+    elif output_type==2:
+        rescan_logger = LoggerManager.get_logger("Applications_rescan", log_dir=logs_dir)
+        output_csv_file_path = os.path.join(output_dir, f"{org_name}_Repositories_Summary.csv")
+        output_file=os.path.join(output_dir, f"Rescan_applications_summary.xlsx")
+        match_applications(output_csv_file_path,App_Repo_Mapping,output_file,rescan_logger)
+    elif output_type == 7:
         try:
             UnzipFile.unzip_code(src_dir, unzip_dir, os.path.join(logs_dir, f"Unzip_Execution_{current_datetime}.log"), os.path.join(logs_dir, f"Unzip_Time_{current_datetime}.log"))
         except Exception as e:
             print(f"Error occurred during extraction: {e}")
-
-    elif output_type == 4:
+    elif output_type==3:
+        rescan_logger = LoggerManager.get_logger("Export_HL_existing_data", log_dir=logs_dir)
+        url = "{}/WS2/domains/{}/applications".format(highlight_base_url,highlight_company_id)
+        headers = {"Authorization": "Bearer {}".format(highlight_token)}
+        from datetime import datetime
+        current_date = datetime.now().strftime("%Y%m%d")
+        fetch_and_save_applications(url,headers,output_dir,rescan_logger,current_date)
+    elif output_type == 8:
         log_file=os.path.join(logs_dir, f"AppRepoMapping_{current_datetime}.log")
         logger = AppRepoMapping.setup_logger(log_file)
         summary_log_file = os.path.join(logs_dir, f"AppRepoMappingSummary_log_{current_datetime}.txt")
@@ -660,17 +1108,26 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
             print("Application to repository mapping information is missing, please refer README.md to create the mapping spreadsheet.")
             return
         mapping_excel_path = os.path.join(config_dir, f"App-Repo-Mapping.xlsx")
-        add_action_column(mapping_excel_path, output_csv_file_path)
+        add_action_column(App_Repo_Mapping, output_csv_file_path)
         AppRepoMapping.create_application_folders(App_Repo_Mapping, unzip_dir, src_dir_analyze, logger, summary_logger)
-
-    elif output_type == 5:  # New option for copying folder
+        # update_rescan_column(mapping_excel_path,output_csv_file_path,log_file)
+    elif output_type==4:
+        log_file = LoggerManager.get_logger("Fetch_New_Applications_", log_dir=logs_dir)
+        app_log_file=LoggerManager.get_logger("create_new_Applications", log_dir=logs_dir)
+        hl_applications_path=get_hl_applications_path(output_dir)
+        output_csv_file_path = os.path.join(output_dir, f"{org_name}_New_applicatiosn.xlsx")
+        find_new_applications(hl_applications_path,App_Repo_Mapping,log_file)
+        create_applications_hl(highlight_base_url, app_log_file,App_Repo_Mapping,highlight_token,highlight_company_id)
+    elif output_type == 9:  # New option for copying folder
         if not os.path.exists(csv_file_path):
             print(f"CSV file not found at {csv_file_path}. Please check your config.")
             return
         log_file_path = os.path.join(logs_dir, f"MainframeCopyAppendLog_{current_datetime}.log")
         mainframeCopyAppend_to_analyzed_from_csv(csv_file_path, log_file_path)
-
-    elif output_type == 6:
+    elif output_type==5:
+        hl_applications_path=get_hl_applications_path(output_dir)
+        identify_to_be_deleted_apps(hl_applications_path,output_dir,logs_dir,App_Repo_Mapping)
+    elif output_type == 13:
         parent_folder = src_dir_analyze
         if os.path.exists(parent_folder):
             long_paths = find_long_paths(parent_folder)
@@ -688,7 +1145,7 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
         else:
             print("The specified parent folder does not exist.\n")
     
-    elif output_type == 7:
+    elif output_type == 11:
         try:
             HLScanAndOnboard.main()
         except Exception as e:
@@ -822,6 +1279,40 @@ def main_operations(output_type, current_datetime, org_name, token, config_dir, 
             HLScanAndOnboard.main()
         except Exception as e:
             logging.error(f'{e}')
+    elif output_type == 10:
+        # Step 1: Setup loggers
+        rescan_logger = LoggerManager.get_logger("re_export_HL_existing_data_", log_dir=logs_dir)
+        app_logger = LoggerManager.get_logger("app_txt", log_dir=logs_dir)
+
+        # Step 2: Prepare API details
+        url = f"{highlight_base_url}/WS2/domains/{highlight_company_id}/applications"
+        headers = {"Authorization": f"Bearer {highlight_token}"}
+
+        # Step 3: Prepare paths
+        rescan_summary = os.path.join(output_dir, "Rescan_applications_summary.xlsx")
+
+        # Step 4: Find the latest LM_Highlight_AppDetails_ file
+        latest_hl_data = None
+        for file in os.listdir(output_dir):
+            if file.startswith("LM_Highlight_AppDetails_") and file.endswith(".xlsx"):
+                latest_hl_data = os.path.join(output_dir, file)
+                break
+
+        if not latest_hl_data:
+            rescan_logger.error("No LM_Highlight_AppDetails_ file found in the output directory.")
+            print("Error: LM_Highlight_AppDetails_ file not found.")
+        else:
+            from datetime import datetime
+            current_date = datetime.now().strftime("%Y%m%d")
+            fetch_and_save_applications(url, headers, output_dir, rescan_logger, current_date)
+
+            # Step 6: Create Application TXT file for rescan apps
+            create_app_txt(
+                latest_hl_data=latest_hl_data,
+                rescan_summary=rescan_summary,
+                app_logger=app_logger,
+                txt_output_path=highlight_application_mapping
+            )
 
     else:
         print("Invalid choice.")
